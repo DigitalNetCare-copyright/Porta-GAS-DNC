@@ -36,34 +36,37 @@
                                             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
                                         };
 
-                                        // 1. LOGIKA AUTENTIKASI SUPABASE (Diperbaiki & Final)
+                                        // 1. LOGIKA AUTENTIKASI SUPABASE (Diperbaiki: Pencocokan Langsung)
                                         if (prop === 'verifyLogin') {
                                             console.log("Mencoba login ke Supabase dengan:", payload.email);
                                             const email = payload.email;
                                             const password = payload.password;
                                             
-                                            // Bypass Khusus Super Admin (Membaca password biasa)
-                                            if (email === 'shakudaraedo@gmail.com' && password === 'Sanigya091020$') {
-                                                const {data, error} = await supabase.from('members').select('*').eq('email', email).single();
-                                                if(data) {
-                                                    resData = {success: true, message: "Login Admin berhasil", data: {token: 'session-'+data.id, nama_produk: 'Administrator', name: data.name, id: data.id, email: data.email, phone: data.phone}};
-                                                } else {
-                                                    resData = {success: false, message: "Akun Admin tidak ditemukan di database."};
-                                                }
-                                            } else {
-                                                // Logika Member Biasa (Sandi dienkripsi dulu sebelum dicocokkan)
-                                                const hashedPassword = await hashSHA256(password);
-                                                const {data, error} = await supabase.from('members').select('*').eq('email', email).eq('password', hashedPassword).single();
+                                            // Cek langsung ke database sesuai data asli dari Spreadsheet (Tanpa Enkripsi)
+                                            const {data, error} = await supabase.from('members').select('*').eq('email', email).eq('password', password).single();
+                                            
+                                            if (error) {
+                                                console.error("Pesan Error Supabase:", error.message);
+                                                if (error.message.includes('permission denied')) resData = {success: false, message: "Akses Ditolak: Database terkunci."};
+                                                else resData = {success: false, message: "Kredensial tidak valid. Pastikan email dan sandi benar."};
+                                            } else if (data) {
+                                                // Deteksi Admin otomatis jika rolenya Administrator
+                                                const isAdmin = (data.nama_produk === 'Administrator' || data.email === 'digitalnetcarecopyright@gmail.com');
                                                 
-                                                if (error) {
-                                                    console.error("Pesan Error Supabase:", error.message);
-                                                    if (error.message.includes('permission denied')) resData = {success: false, message: "Akses Ditolak: Database terkunci."};
-                                                    else resData = {success: false, message: "Kredensial tidak valid. Pastikan email dan sandi benar."};
-                                                } else if (data) {
-                                                    resData = {success: true, message: "Login berhasil", data: {token: 'session-'+data.id, nama_produk: data.nama_produk, name: data.name, id: data.id, email: data.email, phone: data.phone}};
-                                                } else {
-                                                    resData = {success: false, message: "Kredensial tidak valid. Pastikan email dan sandi benar."};
-                                                }
+                                                resData = {
+                                                    success: true, 
+                                                    message: isAdmin ? "Login Admin berhasil" : "Login berhasil", 
+                                                    data: {
+                                                        token: 'session-'+data.id, 
+                                                        nama_produk: data.nama_produk, 
+                                                        name: data.name, 
+                                                        id: data.id, 
+                                                        email: data.email, 
+                                                        phone: data.phone
+                                                    }
+                                                };
+                                            } else {
+                                                resData = {success: false, message: "Kredensial tidak valid. Pastikan email dan sandi benar."};
                                             }
                                         }
                                         else if (prop === 'requestPasswordReset') {
