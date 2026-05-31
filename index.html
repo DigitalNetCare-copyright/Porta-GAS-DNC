@@ -125,13 +125,32 @@
                                             if(error) throw error; resData = {success: true, message: "Media ditambah."}; 
                                         }
                                         else if (prop === 'addApp') { 
-                                            const {error} = await supabase.from('apps').insert([{id: generateId(), ...payload}]); 
-                                            if(error) throw error; resData = {success: true, message: "App ditambah."}; 
+                                            let imageUrl = '';
+                                            // Jika Admin memilih file gambar
+                                            if (payload.file) {
+                                                const fileName = `${Date.now()}_${payload.file.name.replace(/\s+/g, '_')}`;
+                                                const { error: uploadError } = await supabase.storage.from('app-images').upload(fileName, payload.file);
+                                                if (uploadError) throw uploadError;
+                                                const { data: publicUrlData } = supabase.storage.from('app-images').getPublicUrl(fileName);
+                                                imageUrl = publicUrlData.publicUrl; // Dapatkan link otomatisnya
+                                            }
+                                            
+                                            const {error} = await supabase.from('apps').insert([{id: generateId(), title: payload.title, desc: payload.desc, image: imageUrl, link: payload.link, akses: payload.akses}]); 
+                                            if(error) throw error; resData = {success: true, message: "App & Thumbnail berhasil diunggah."}; 
                                         }
                                         else if (prop === 'editApp') { 
-                                            const {error} = await supabase.from('apps').update({
-                                                title: payload.title, desc: payload.desc, image: payload.image, link: payload.link, akses: payload.akses
-                                            }).eq('id', payload.id);
+                                            let updateData = {title: payload.title, desc: payload.desc, link: payload.link, akses: payload.akses};
+                                            
+                                            // Jika Admin mengganti file gambar lama dengan yang baru
+                                            if (payload.file) {
+                                                const fileName = `${Date.now()}_${payload.file.name.replace(/\s+/g, '_')}`;
+                                                const { error: uploadError } = await supabase.storage.from('app-images').upload(fileName, payload.file);
+                                                if (uploadError) throw uploadError;
+                                                const { data: publicUrlData } = supabase.storage.from('app-images').getPublicUrl(fileName);
+                                                updateData.image = publicUrlData.publicUrl; // Timpa link lama
+                                            }
+
+                                            const {error} = await supabase.from('apps').update(updateData).eq('id', payload.id);
                                             if(error) throw error; resData = {success: true, message: "Data Aplikasi diperbarui."}; 
                                         }
 
@@ -1325,20 +1344,22 @@
                 title: 'Upload Template App',
                 html: '<input id="swal-input1" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" placeholder="Nama Aplikasi">' +
                       '<textarea id="swal-input2" class="swal2-textarea bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" placeholder="Deskripsi Singkat" rows="3"></textarea>' +
-                      '<input id="swal-inputimage" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" placeholder="Link URL Gambar / Thumbnail">' +
+                      '<div class="text-left w-4/5 mx-auto text-xs text-slate-400 mb-1"><i class="fa-solid fa-image mr-1"></i> Upload Thumbnail (Gambar):</div>' +
+                      '<input id="swal-inputfile" type="file" accept="image/*" class="swal2-file bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2 p-2 rounded-lg border border-dashed border-slate-600 cursor-pointer">' +
                       '<input id="swal-input3" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" placeholder="Link / Demo Aplikasi">' +
                       '<input id="swal-input-akses" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" placeholder="Link Source Code (Kolom Akses / ZIP)">',
                 focusConfirm: false, showCancelButton: true, confirmButtonText: 'Simpan', background: '#1e293b', color: '#fff',
                 preConfirm: () => { 
+                    const fileInput = document.getElementById('swal-inputfile');
                     return { 
                         title: document.getElementById('swal-input1').value, desc: document.getElementById('swal-input2').value, 
-                        image: document.getElementById('swal-inputimage').value, link: document.getElementById('swal-input3').value,
-                        akses: document.getElementById('swal-input-akses').value
+                        file: fileInput.files.length > 0 ? fileInput.files[0] : null, // Tangkap file aslinya
+                        link: document.getElementById('swal-input3').value, akses: document.getElementById('swal-input-akses').value
                     } 
                 }
             }).then((res) => {
                 if (res.isConfirmed && res.value.title) {
-                    showLoading('Menyimpan...');
+                    showLoading('Mengunggah File & Menyimpan...');
                     google.script.run.withSuccessHandler((resText) => {
                         hideLoading(); Toast.fire({ icon: 'success', title: JSON.parse(resText).message }); fetchData('galeri');
                     }).addApp(res.value);
@@ -1352,20 +1373,22 @@
                 title: 'Edit Template App',
                 html: `<input id="swal-edit1" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" value="${app.title}" placeholder="Nama Aplikasi">` +
                       `<textarea id="swal-edit2" class="swal2-textarea bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" placeholder="Deskripsi" rows="3">${app.desc}</textarea>` +
-                      `<input id="swal-editimg" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" value="${app.image || ''}" placeholder="Link URL Gambar">` +
+                      `<div class="text-left w-4/5 mx-auto text-xs text-slate-400 mb-1"><i class="fa-solid fa-image mr-1"></i> Ganti Thumbnail (Biarkan kosong jika tetap):</div>` +
+                      `<input id="swal-editfile" type="file" accept="image/*" class="swal2-file bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2 p-2 rounded-lg border border-dashed border-slate-600 cursor-pointer">` +
                       `<input id="swal-edit3" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" value="${app.link || ''}" placeholder="Link / Demo Aplikasi">` +
                       `<input id="swal-editakses" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" value="${app.akses || ''}" placeholder="Link Source Code (Kolom Akses / ZIP)">`,
                 focusConfirm: false, showCancelButton: true, confirmButtonText: 'Update', background: '#1e293b', color: '#fff',
                 preConfirm: () => { 
+                    const fileInput = document.getElementById('swal-editfile');
                     return { 
                         id: app.id, title: document.getElementById('swal-edit1').value, desc: document.getElementById('swal-edit2').value, 
-                        image: document.getElementById('swal-editimg').value, link: document.getElementById('swal-edit3').value, 
-                        akses: document.getElementById('swal-editakses').value
+                        file: fileInput.files.length > 0 ? fileInput.files[0] : null, // Tangkap file baru (jika ada)
+                        link: document.getElementById('swal-edit3').value, akses: document.getElementById('swal-editakses').value
                     } 
                 }
             }).then((res) => {
                 if (res.isConfirmed && res.value.title) {
-                    showLoading('Memperbarui...');
+                    showLoading('Memperbarui Data...');
                     google.script.run.withSuccessHandler((resText) => {
                         hideLoading(); Toast.fire({ icon: 'success', title: JSON.parse(resText).message }); fetchData('galeri');
                     }).editApp(res.value);
