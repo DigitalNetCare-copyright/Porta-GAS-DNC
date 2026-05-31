@@ -36,21 +36,15 @@
                                             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
                                         };
 
-                                        // 1. LOGIKA AUTENTIKASI (HAK AKSES DIPERBAIKI)
+                                        // 1. LOGIKA AUTENTIKASI (HAK AKSES)
                                         if (prop === 'verifyLogin') {
                                             const email = (payload.email || '').trim();
                                             const password = payload.password || '';
                                             const hashedInput = await hashSHA256(password);
                                             
-                                            // JALUR 1: BYPASS SUPER ADMIN 
                                             if (email === 'digitalnetcarecopyright@gmail.com' && (password === '392180' || password === '123456')) {
-                                                resData = { 
-                                                    success: true, 
-                                                    message: "Login Super Admin Berhasil", 
-                                                    data: { token: 'session-master', nama_produk: 'Administrator', name: 'Super Admin DNC', id: 999999, email: email, phone: '-' } 
-                                                };
+                                                resData = { success: true, message: "Login Super Admin Berhasil", data: { token: 'session-master', nama_produk: 'Administrator', name: 'Super Admin DNC', id: 999999, email: email, phone: '-' } };
                                             } else {
-                                                // JALUR 2: PENCOCOKAN DATABASE MEMBER
                                                 const {data, error} = await supabase.from('members').select('*').eq('email', email).single();
                                                 
                                                 if (error || !data) {
@@ -60,14 +54,8 @@
                                                     const isMatch = (dbPass === password || dbPass === hashedInput || (dbPass === 'TERENKRIPSI' && password === 'digitalnetcare'));
 
                                                     if (isMatch) {
-                                                        // 🛠️ PERBAIKAN ISSUE 2: Cabut hak admin dari shakudaraedo. Admin HANYA yang rolenya Administrator atau email Super Admin.
                                                         const isAdmin = (data.nama_produk === 'Administrator' || data.email === 'digitalnetcarecopyright@gmail.com');
-                                                        
-                                                        resData = { 
-                                                            success: true, 
-                                                            message: isAdmin ? "Login Admin berhasil" : "Login berhasil", 
-                                                            data: { token: 'session-'+data.id, nama_produk: data.nama_produk, name: data.name, id: data.id, email: data.email, phone: data.phone } 
-                                                        };
+                                                        resData = { success: true, message: isAdmin ? "Login Admin berhasil" : "Login berhasil", data: { token: 'session-'+data.id, nama_produk: data.nama_produk, name: data.name, id: data.id, email: data.email, phone: data.phone } };
                                                         
                                                         if (dbPass === password || dbPass === 'TERENKRIPSI') {
                                                             supabase.from('members').update({password: hashedInput}).eq('id', data.id).then();
@@ -79,7 +67,7 @@
                                             }
                                         }
                                         
-                                        // 🛠️ PERBAIKAN ISSUE 1: LOGIKA LUPA SANDI (HYBRID)
+                                        // 2. LOGIKA LUPA SANDI (HYBRID) - Diperbaiki, tanpa double URL check
                                         else if (prop === 'requestPasswordReset') {
                                             const emailInput = args[0];
                                             const {data} = await supabase.from('members').select('id, name').eq('email', emailInput).single();
@@ -90,28 +78,22 @@
                                                 
                                                 await supabase.from('members').update({password: hashedTemp}).eq('id', data.id);
                                                 
-                                                // ⚠️ PENTING: GANTI TEKS DI BAWAH INI DENGAN URL WEB APP GAS ANDA!
                                                 const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyLkounQrNe-HLU-dSIiLC1Ngp0fqwfRsfi3PkhuwgJ-NACouy0ITumJERTaKlaTobd3g/exec';
                                                 
-                                                if (GAS_WEB_APP_URL === 'https://script.google.com/macros/s/AKfycbyLkounQrNe-HLU-dSIiLC1Ngp0fqwfRsfi3PkhuwgJ-NACouy0ITumJERTaKlaTobd3g/exec') {
-                                                    resData = {success: false, message: "URL Sistem Email belum diatur. Silakan cek kode index.html"};
-                                                } else {
-                                                    const formData = new URLSearchParams();
-                                                    formData.append('email', emailInput);
-                                                    formData.append('password', tempPass);
-                                                    formData.append('name', data.name);
+                                                const formData = new URLSearchParams();
+                                                formData.append('email', emailInput);
+                                                formData.append('password', tempPass);
+                                                formData.append('name', data.name);
 
-                                                    // Mengirim perintah ke GAS (mode: no-cors agar tidak diblokir keamanan browser)
-                                                    fetch(GAS_WEB_APP_URL, { method: 'POST', body: formData, mode: 'no-cors' }).catch(err => console.error("GAS Error:", err));
-                                                    
-                                                    resData = {success: true, message: "Kata sandi sementara telah dikirim ke email Anda!"};
-                                                }
+                                                fetch(GAS_WEB_APP_URL, { method: 'POST', body: formData, mode: 'no-cors' }).catch(err => console.error("GAS Error:", err));
+                                                
+                                                resData = {success: true, message: "Kata sandi sementara telah dikirim ke email Anda!"};
                                             } else {
                                                 resData = {success: false, message: "Email tersebut tidak terdaftar."};
                                             }
                                         }
 
-                                        // 2. DASHBOARD STATS & GET DATA
+                                        // 3. DASHBOARD STATS & GET DATA
                                         else if (prop === 'getStats') {
                                             const media = await supabase.from('media').select('id', {count: 'exact', head: true});
                                             const apps = await supabase.from('apps').select('id', {count: 'exact', head: true});
@@ -126,7 +108,7 @@
                                         else if (prop === 'getEmailRequests') resData = {success: true, data: (await supabase.from('email_requests').select('*')).data || []};
                                         else if (prop === 'getIntegrations') resData = {success: true, data: (await supabase.from('integrations').select('*')).data || []};
 
-                                        // 3. WRITE DATA 
+                                        // 4. WRITE DATA 
                                         else if (prop === 'addAnnouncement') {
                                             const dateStr = new Date().toLocaleString('id-ID', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
                                             const {error} = await supabase.from('announcements').insert([{id: generateId(), title: payload.title, content: payload.content, date: dateStr}]);
@@ -146,8 +128,14 @@
                                             const {error} = await supabase.from('apps').insert([{id: generateId(), ...payload}]); 
                                             if(error) throw error; resData = {success: true, message: "App ditambah."}; 
                                         }
+                                        else if (prop === 'editApp') { 
+                                            const {error} = await supabase.from('apps').update({
+                                                title: payload.title, desc: payload.desc, image: payload.image, link: payload.link, akses: payload.akses
+                                            }).eq('id', payload.id);
+                                            if(error) throw error; resData = {success: true, message: "Data Aplikasi diperbarui."}; 
+                                        }
 
-                                        // 4. MEMBER MANAGEMENT & PROFIL
+                                        // 5. MEMBER MANAGEMENT & PROFIL
                                         else if (prop === 'addMember') {
                                             const defaultHashed = await hashSHA256('digitalnetcare');
                                             const produkInput = payload.nama_produk || 'Member Biasa';
@@ -156,10 +144,7 @@
                                         }
                                         else if (prop === 'editMember') {
                                             let updateData = {name: payload.name, phone: payload.phone, email: payload.email, nama_produk: payload.nama_produk};
-                                            // Jika admin mengisi form sandi baru, ikut dienkripsi & diupdate ke Supabase
-                                            if (payload.new_password && payload.new_password.trim() !== '') {
-                                                updateData.password = await hashSHA256(payload.new_password.trim());
-                                            }
+                                            if (payload.new_password && payload.new_password.trim() !== '') { updateData.password = await hashSHA256(payload.new_password.trim()); }
                                             await supabase.from('members').update(updateData).eq('id', payload.id);
                                             resData = {success: true, message: "Data & Akses berhasil diperbarui."};
                                         }
@@ -172,14 +157,13 @@
                                             const oldHashed = await hashSHA256(payload.oldPassword);
                                             const newHashed = await hashSHA256(payload.newPassword);
                                             const {data} = await supabase.from('members').select('password').eq('id', payload.id).single();
-                                            // HYBRID CHECK untuk ubah sandi
                                             if(data && (data.password === payload.oldPassword || data.password === oldHashed)) {
                                                 await supabase.from('members').update({password: newHashed}).eq('id', payload.id);
                                                 resData = {success: true, message: "Kata sandi diubah."};
                                             } else resData = {success: false, message: "Kata sandi lama salah."};
                                         }
 
-                                        // 5. KELOLA EMAIL REQUESTS
+                                        // 6. KELOLA EMAIL REQUESTS
                                         else if (prop === 'requestEmailChange') {
                                             const dateStr = new Date().toLocaleString('id-ID', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
                                             const {error} = await supabase.from('email_requests').insert([{
@@ -200,7 +184,7 @@
                                             resData = {success: true, message: "Pengajuan ditolak & dihapus."};
                                         }
 
-                                        // 6. INTEGRASI
+                                        // 7. INTEGRASI
                                         else if (prop === 'addIntegration') {
                                             const {error} = await supabase.from('integrations').insert([{id: generateId(), spreadsheet_id: payload.spreadsheetId, keyword: payload.keyword}]);
                                             if(error) throw error; resData = {success: true, message: "Integrasi disimpan."};
@@ -213,7 +197,6 @@
                                             resData = {success: true, message: "Fitur Auto-Sync GAS dinonaktifkan di mode Supabase."};
                                         }
 
-                                        // Fallback Response
                                         if(!resData) resData = {success: true, message: "Aksi berhasil diproses"};
                                         if (target._successHandler) target._successHandler(JSON.stringify(resData));
 
@@ -235,52 +218,26 @@
         tailwind = { config: { darkMode: 'class', theme: { extend: {} } } };
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
-    
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; }
-
-        .glass-panel {
-            background: rgba(17, 24, 39, 0.75);
-            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-        }
-        .glass-nav {
-            background: rgba(15, 23, 42, 0.95);
-            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-        }
+        .glass-panel { background: rgba(17, 24, 39, 0.75); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); }
+        .glass-nav { background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
         .neon-shadow { box-shadow: 0 0 15px rgba(59, 130, 246, 0.5); }
-        .skeleton {
-            background: linear-gradient(110deg, rgba(255,255,255,0.05) 8%, rgba(255,255,255,0.1) 18%, rgba(255,255,255,0.05) 33%);
-            border-radius: 5px; background-size: 200% 100%; animation: 1.5s shine linear infinite;
-        }
+        .skeleton { background: linear-gradient(110deg, rgba(255,255,255,0.05) 8%, rgba(255,255,255,0.1) 18%, rgba(255,255,255,0.05) 33%); border-radius: 5px; background-size: 200% 100%; animation: 1.5s shine linear infinite; }
         @keyframes shine { to { background-position-x: -200%; } }
-
-        #page-overlay {
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(15, 23, 42, 0.8); z-index: 9999;
-            justify-content: center; align-items: center; backdrop-filter: blur(5px);
-        }
-
+        #page-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.8); z-index: 9999; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #64748b; }
-        
-        /* Navbar Transitions */
         .nav-link { position: relative; padding-bottom: 0.25rem; transition: color 0.3s; }
-        .nav-link::after {
-            content: ''; position: absolute; width: 0; height: 2px; bottom: 0; left: 0;
-            background-color: #3b82f6; transition: width 0.3s ease;
-        }
+        .nav-link::after { content: ''; position: absolute; width: 0; height: 2px; bottom: 0; left: 0; background-color: #3b82f6; transition: width 0.3s ease; }
         .nav-link:hover::after, .nav-link.active::after { width: 100%; }
         .nav-link.active { color: #fff; font-weight: 600; }
-        
         .view-section { display: none; animation: fadeIn 0.4s ease-out forwards; }
         .view-section.active { display: block; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -291,6 +248,18 @@
     <div id="page-overlay" class="flex flex-col">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-t-2 border-blue-400 mb-4"></div>
         <span class="text-blue-400 font-medium tracking-wide" id="overlay-text">MEMPROSES...</span>
+    </div>
+
+    <div id="media-viewer-modal" class="hidden fixed inset-0 top-16 z-[60] bg-slate-900/95 backdrop-blur-md flex flex-col">
+        <div class="flex justify-between items-center px-6 py-3 bg-slate-800 border-b border-slate-700 shadow-lg z-10">
+            <h3 id="media-viewer-title" class="font-bold text-white text-lg truncate"><i class="fa-solid fa-photo-film text-indigo-400 mr-2"></i>Media Viewer</h3>
+            <button onclick="closeMediaViewer()" class="text-slate-400 hover:text-red-400 bg-slate-700 hover:bg-slate-600 px-4 py-1.5 rounded-lg transition-colors flex items-center font-medium shadow-md">
+                <i class="fa-solid fa-xmark mr-2"></i> Tutup Layar
+            </button>
+        </div>
+        <div class="flex-1 w-full relative">
+            <iframe id="media-viewer-frame" class="absolute inset-0 w-full h-full border-0" allowfullscreen allow="autoplay"></iframe>
+        </div>
     </div>
 
     <div id="profile-modal" class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex justify-center items-center">
@@ -658,7 +627,6 @@
         }
         function hideLoading() { document.getElementById('page-overlay').style.display = 'none'; }
 
-        // --- SPA LOGIC ---
         function switchView(targetId) {
             document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
             const targetView = document.getElementById('view-' + targetId);
@@ -687,7 +655,6 @@
             else icon.classList.replace('fa-bars', 'fa-xmark');
         }
 
-        // --- PROFIL & GANTI EMAIL LOGIC ---
         function openProfile() {
             if(!window.currentUserData) return;
             document.getElementById('profile-name').textContent = window.currentUserData.name;
@@ -695,7 +662,6 @@
             document.getElementById('profile-email').textContent = window.currentUserData.email;
             document.getElementById('new-email-input').value = '';
             
-            // Sembunyikan fitur ganti bagi Admin
             const isMember = window.currentUserData.nama_produk !== "Administrator";
             document.getElementById('btn-edit-name').style.display = isMember ? 'block' : 'none';
             document.getElementById('btn-edit-phone').style.display = isMember ? 'block' : 'none';
@@ -846,7 +812,6 @@
             });
         }
 
-        // --- LOGIN & SESSION LOGIC ---
         function handleLogin(e) {
             e.preventDefault();
             const email = document.getElementById('email').value.trim();
@@ -888,8 +853,6 @@
         function setupRoleUI(role) {
             const data = window.currentUserData;
             document.querySelectorAll('#ui-name').forEach(el => { el.textContent = data.name; el.classList.remove('skeleton'); });
-            
-            // Merender nama_produk agar tampil di layar UI
             document.querySelectorAll('#ui-role').forEach(el => { el.textContent = data.nama_produk || 'Akses Basic'; el.classList.remove('skeleton'); });
             
             let heroName = document.getElementById('hero-name');
@@ -901,15 +864,12 @@
             document.getElementById('ui-status-dot').classList.remove('hidden');
             document.getElementById('mobile-ui-name').textContent = data.name;
 
-            // 🛠️ PERBAIKAN FINAL: Deteksi Admin HANYA untuk email Super Admin atau role Administrator
             const isAdmin = (data.email === "digitalnetcarecopyright@gmail.com" || data.nama_produk === "Administrator");
-            
             document.querySelectorAll('.admin-feature').forEach(el => {
                 if(isAdmin) el.classList.remove('hidden'); else el.classList.add('hidden');
             });
         }
 
-        // --- FETCH DATA LOGIC ---
         function fetchData(view) {
             if(view === 'dashboard') {
                 google.script.run.withSuccessHandler((resText) => {
@@ -971,12 +931,10 @@
                         if(res.success && Array.isArray(res.data)) {
                             const types = ['Video', 'PDF', 'Slide'];
                             let htmlContent = '';
-                            
                             types.forEach(type => {
                                 const filteredMedia = res.data.filter(m => m.type === type);
                                 if(filteredMedia.length > 0) {
                                     let sectionTitle = type === 'Video' ? '🎥 Video Pembelajaran' : (type === 'PDF' ? '📄 Modul PDF' : '📊 Slide Presentasi');
-                                    
                                     htmlContent += `
                                         <div class="mb-4">
                                             <h3 class="text-lg font-bold text-slate-300 mb-4 border-b border-slate-700 pb-2">${sectionTitle}</h3>
@@ -986,10 +944,10 @@
                                                         <div class="w-14 h-14 bg-indigo-900/40 rounded-lg flex items-center justify-center text-indigo-400 shrink-0">
                                                             <i class="fa-solid ${item.type === 'Video' ? 'fa-video' : (item.type === 'Slide' ? 'fa-person-chalkboard' : 'fa-file-pdf')} text-2xl"></i>
                                                         </div>
-                                                        <div>
+                                                        <div class="flex-1">
                                                             <h3 class="font-bold text-white leading-tight mb-1">${item.title}</h3>
                                                             <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded">${item.type}</span>
-                                                            <a href="${item.link}" target="_blank" class="block mt-3 text-sm text-indigo-400 hover:text-indigo-300 font-medium">Akses Media</a>
+                                                            <button onclick="openMediaViewer('${item.link}', '${item.title}')" class="block mt-3 text-sm text-indigo-400 hover:text-indigo-300 font-medium text-left w-full"><i class="fa-solid fa-play mr-1"></i> Buka Materi</button>
                                                         </div>
                                                     </div>
                                                 `).join('')}
@@ -1008,15 +966,16 @@
                     try {
                         const res = JSON.parse(resText);
                         if(res.success && Array.isArray(res.data)) {
+                            window.currentAppsData = res.data; // Menyimpan data sementara untuk fungsi popup
                             document.getElementById('container-galeri').innerHTML = res.data.map(item => `
                                 <div class="bg-slate-800 rounded-xl overflow-hidden border border-slate-700 hover:border-teal-500 transition-colors flex flex-col group">
                                     <div class="h-40 bg-slate-900 relative overflow-hidden flex items-center justify-center">
-                                        ${item.image ? `<img src="${item.image}" alt="${item.title}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">` : `<i class="fa-solid fa-code text-5xl text-slate-700"></i>`}
+                                        ${item.image ? `<img src="${item.image}" alt="${item.title}" onerror="this.onerror=null; this.src='https://via.placeholder.com/600x400/1e293b/3b82f6?text=Gambar+Tidak+Tersedia';" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">` : `<i class="fa-solid fa-code text-5xl text-slate-700"></i>`}
                                     </div>
                                     <div class="p-6 flex-1 flex flex-col relative z-10 bg-slate-800">
                                         <h3 class="text-xl font-bold text-white mb-2">${item.title}</h3>
-                                        <p class="text-slate-400 text-sm flex-1">${item.desc}</p>
-                                        <a href="${item.link}" target="_blank" class="mt-4 w-full bg-slate-700 hover:bg-slate-600 text-center text-white py-2 rounded-lg text-sm font-medium transition-colors">Lihat Detail App</a>
+                                        <p class="text-slate-400 text-sm flex-1 line-clamp-3">${item.desc}</p>
+                                        <button onclick="openAppDetail(${item.id})" class="mt-4 w-full bg-slate-700 hover:bg-slate-600 text-center text-white py-2 rounded-lg text-sm font-medium transition-colors">Lihat Detail App</button>
                                     </div>
                                 </div>
                             `).join('');
@@ -1110,6 +1069,56 @@
                     } catch(e) {}
                 }).getIntegrations();
             }
+        }
+
+        // --- NEW FEATURES: IN-APP MEDIA VIEWER & APP DETAIL MODAL ---
+        function openMediaViewer(url, title) {
+            let finalUrl = url;
+            // Deteksi otomatis dan konversi link agar bisa dimuat di iframe (Bypass CORS)
+            if (url.includes('youtube.com/watch?v=')) { finalUrl = url.replace('watch?v=', 'embed/'); } 
+            else if (url.includes('youtu.be/')) { finalUrl = url.replace('youtu.be/', 'youtube.com/embed/'); }
+            else if (url.includes('drive.google.com/file/d/')) { finalUrl = url.replace('/view', '/preview'); }
+
+            document.getElementById('media-viewer-title').innerHTML = `<i class="fa-solid fa-photo-film text-indigo-400 mr-2"></i> ${title}`;
+            document.getElementById('media-viewer-frame').src = finalUrl;
+            document.getElementById('media-viewer-modal').classList.remove('hidden');
+        }
+
+        function closeMediaViewer() {
+            document.getElementById('media-viewer-frame').src = '';
+            document.getElementById('media-viewer-modal').classList.add('hidden');
+        }
+
+        function openAppDetail(id) {
+            const app = window.currentAppsData.find(a => a.id == id);
+            if(!app) return;
+
+            const isAdmin = (window.currentUserData.nama_produk === "Administrator" || window.currentUserData.email === "digitalnetcarecopyright@gmail.com");
+            
+            let htmlContent = `
+                <div class="text-left">
+                    ${app.image ? `<img src="${app.image}" class="w-full h-48 object-cover rounded-lg mb-4" onerror="this.onerror=null; this.src='https://via.placeholder.com/600x400/1e293b/3b82f6?text=Gambar+Tidak+Tersedia';">` : ''}
+                    <p class="text-slate-300 text-sm mb-6 leading-relaxed bg-slate-900/50 p-4 rounded-lg border border-slate-700 max-h-48 overflow-y-auto">${app.desc}</p>
+                    <div class="flex flex-col gap-3">
+                        <a href="${app.link}" target="_blank" class="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg text-center font-medium transition-colors shadow-lg"><i class="fa-solid fa-laptop-code mr-2"></i> Buka Demo Aplikasi</a>
+                        
+                        ${app.akses ? 
+                            `<a href="${app.akses}" target="_blank" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded-lg text-center font-medium transition-colors shadow-lg"><i class="fa-solid fa-file-zipper mr-2"></i> Download Source Code</a>` 
+                            : 
+                            `<button disabled class="w-full bg-slate-700 text-slate-500 py-2 rounded-lg text-center font-medium cursor-not-allowed border border-slate-600"><i class="fa-solid fa-lock mr-2"></i> Source Code Belum Tersedia</button>`
+                        }
+                        
+                        ${isAdmin ? `<hr class="border-slate-700 my-2"><button onclick="Swal.close(); adminEditApp('${app.id}')" class="w-full bg-yellow-600 hover:bg-yellow-500 text-white py-2 rounded-lg text-center font-medium transition-colors"><i class="fa-solid fa-pen-to-square mr-2"></i> Edit Data Aplikasi</button>` : ''}
+                    </div>
+                </div>
+            `;
+
+            Swal.fire({
+                title: `<span class="text-2xl font-bold text-white">${app.title}</span>`,
+                html: htmlContent,
+                showConfirmButton: false, showCloseButton: true,
+                background: '#1e293b', color: '#fff', width: '32em'
+            });
         }
 
         // --- ADMIN ACTION LOGIC ---
@@ -1314,19 +1323,52 @@
         function adminAddApp() {
             Swal.fire({
                 title: 'Upload Template App',
-                html: '<input id="swal-input1" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="Nama Aplikasi">' +
-                      '<input id="swal-input2" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="Deskripsi Singkat">' +
-                      '<input id="swal-inputimage" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="Link URL Gambar / Thumbnail">' +
-                      '<input id="swal-input3" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="Link / Demo Aplikasi">',
+                html: '<input id="swal-input1" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" placeholder="Nama Aplikasi">' +
+                      '<textarea id="swal-input2" class="swal2-textarea bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" placeholder="Deskripsi Singkat" rows="3"></textarea>' +
+                      '<input id="swal-inputimage" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" placeholder="Link URL Gambar / Thumbnail">' +
+                      '<input id="swal-input3" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" placeholder="Link / Demo Aplikasi">' +
+                      '<input id="swal-input-akses" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" placeholder="Link Source Code (Kolom Akses / ZIP)">',
                 focusConfirm: false, showCancelButton: true, confirmButtonText: 'Simpan', background: '#1e293b', color: '#fff',
-                preConfirm: () => { return { title: document.getElementById('swal-input1').value, desc: document.getElementById('swal-input2').value, image: document.getElementById('swal-inputimage').value, link: document.getElementById('swal-input3').value } }
+                preConfirm: () => { 
+                    return { 
+                        title: document.getElementById('swal-input1').value, desc: document.getElementById('swal-input2').value, 
+                        image: document.getElementById('swal-inputimage').value, link: document.getElementById('swal-input3').value,
+                        akses: document.getElementById('swal-input-akses').value
+                    } 
+                }
             }).then((res) => {
                 if (res.isConfirmed && res.value.title) {
                     showLoading('Menyimpan...');
                     google.script.run.withSuccessHandler((resText) => {
-                        hideLoading(); const response = JSON.parse(resText);
-                        Toast.fire({ icon: 'success', title: response.message }); fetchData('galeri');
+                        hideLoading(); Toast.fire({ icon: 'success', title: JSON.parse(resText).message }); fetchData('galeri');
                     }).addApp(res.value);
+                }
+            });
+        }
+
+        function adminEditApp(id) {
+            const app = window.currentAppsData.find(a => a.id == id);
+            Swal.fire({
+                title: 'Edit Template App',
+                html: `<input id="swal-edit1" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" value="${app.title}" placeholder="Nama Aplikasi">` +
+                      `<textarea id="swal-edit2" class="swal2-textarea bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" placeholder="Deskripsi" rows="3">${app.desc}</textarea>` +
+                      `<input id="swal-editimg" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" value="${app.image || ''}" placeholder="Link URL Gambar">` +
+                      `<input id="swal-edit3" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" value="${app.link || ''}" placeholder="Link / Demo Aplikasi">` +
+                      `<input id="swal-editakses" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" value="${app.akses || ''}" placeholder="Link Source Code (Kolom Akses / ZIP)">`,
+                focusConfirm: false, showCancelButton: true, confirmButtonText: 'Update', background: '#1e293b', color: '#fff',
+                preConfirm: () => { 
+                    return { 
+                        id: app.id, title: document.getElementById('swal-edit1').value, desc: document.getElementById('swal-edit2').value, 
+                        image: document.getElementById('swal-editimg').value, link: document.getElementById('swal-edit3').value, 
+                        akses: document.getElementById('swal-editakses').value
+                    } 
+                }
+            }).then((res) => {
+                if (res.isConfirmed && res.value.title) {
+                    showLoading('Memperbarui...');
+                    google.script.run.withSuccessHandler((resText) => {
+                        hideLoading(); Toast.fire({ icon: 'success', title: JSON.parse(resText).message }); fetchData('galeri');
+                    }).editApp(res.value);
                 }
             });
         }
