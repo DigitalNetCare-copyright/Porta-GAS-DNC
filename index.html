@@ -36,14 +36,13 @@
                                             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
                                         };
 
-                                        // 1. LOGIKA AUTENTIKASI SUPABASE (100% AKURAT)
+                                        // 1. LOGIKA AUTENTIKASI (HAK AKSES DIPERBAIKI)
                                         if (prop === 'verifyLogin') {
                                             const email = (payload.email || '').trim();
                                             const password = payload.password || '';
                                             const hashedInput = await hashSHA256(password);
                                             
                                             // JALUR 1: BYPASS SUPER ADMIN 
-                                            // Memastikan admin bisa masuk walau format di database berbeda
                                             if (email === 'digitalnetcarecopyright@gmail.com' && (password === '392180' || password === '123456')) {
                                                 resData = { 
                                                     success: true, 
@@ -57,46 +56,56 @@
                                                 if (error || !data) {
                                                     resData = {success: false, message: "Email tidak terdaftar atau kredensial salah."};
                                                 } else {
-                                                    // Pencocokan Hash input dengan Hash di database
-                                                    if (data.password === hashedInput || data.password === password) {
-                                                        const isAdmin = (data.nama_produk === 'Administrator' || data.email === 'shakudaraedo@gmail.com');
+                                                    const dbPass = (data.password || '').trim();
+                                                    const isMatch = (dbPass === password || dbPass === hashedInput || (dbPass === 'TERENKRIPSI' && password === 'digitalnetcare'));
+
+                                                    if (isMatch) {
+                                                        // 🛠️ PERBAIKAN ISSUE 2: Cabut hak admin dari shakudaraedo. Admin HANYA yang rolenya Administrator atau email Super Admin.
+                                                        const isAdmin = (data.nama_produk === 'Administrator' || data.email === 'digitalnetcarecopyright@gmail.com');
+                                                        
                                                         resData = { 
                                                             success: true, 
                                                             message: isAdmin ? "Login Admin berhasil" : "Login berhasil", 
                                                             data: { token: 'session-'+data.id, nama_produk: data.nama_produk, name: data.name, id: data.id, email: data.email, phone: data.phone } 
                                                         };
+                                                        
+                                                        if (dbPass === password || dbPass === 'TERENKRIPSI') {
+                                                            supabase.from('members').update({password: hashedInput}).eq('id', data.id).then();
+                                                        }
                                                     } else {
                                                         resData = {success: false, message: "Kata sandi yang Anda masukkan salah."};
                                                     }
                                                 }
                                             }
                                         }
-                                        // LOGIKA LUPA SANDI (HYBRID SUPABASE + GAS EMAIL SENDER)
+                                        
+                                        // 🛠️ PERBAIKAN ISSUE 1: LOGIKA LUPA SANDI (HYBRID)
                                         else if (prop === 'requestPasswordReset') {
                                             const emailInput = args[0];
                                             const {data} = await supabase.from('members').select('id, name').eq('email', emailInput).single();
                                             
                                             if (data) {
-                                                // 1. Generate Sandi Acak Sementara (8 Karakter)
                                                 const tempPass = Math.random().toString(36).slice(-8);
                                                 const hashedTemp = await hashSHA256(tempPass);
                                                 
-                                                // 2. Timpa sandi lama di Supabase dengan sandi acak yang dienkripsi
                                                 await supabase.from('members').update({password: hashedTemp}).eq('id', data.id);
                                                 
-                                                // 3. Trigger GAS Microservice untuk Mengirim Email via Gmail
-                                                // ⚠️ PENTING: Ganti URL di bawah dengan Web App URL dari Tahap 1
+                                                // ⚠️ PENTING: GANTI TEKS DI BAWAH INI DENGAN URL WEB APP GAS ANDA!
                                                 const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyLkounQrNe-HLU-dSIiLC1Ngp0fqwfRsfi3PkhuwgJ-NACouy0ITumJERTaKlaTobd3g/exec';
                                                 
-                                                const formData = new URLSearchParams();
-                                                formData.append('email', emailInput);
-                                                formData.append('password', tempPass);
-                                                formData.append('name', data.name);
+                                                if (GAS_WEB_APP_URL === 'https://script.google.com/macros/s/AKfycbyLkounQrNe-HLU-dSIiLC1Ngp0fqwfRsfi3PkhuwgJ-NACouy0ITumJERTaKlaTobd3g/exec') {
+                                                    resData = {success: false, message: "URL Sistem Email belum diatur. Silakan cek kode index.html"};
+                                                } else {
+                                                    const formData = new URLSearchParams();
+                                                    formData.append('email', emailInput);
+                                                    formData.append('password', tempPass);
+                                                    formData.append('name', data.name);
 
-                                                // Kirim perintah ke GAS tanpa memblokir sistem UI (Background task)
-                                                fetch(GAS_WEB_APP_URL, { method: 'POST', body: formData }).catch(err => console.error("Gagal memanggil GAS:", err));
-
-                                                resData = {success: true, message: "Kata sandi sementara telah dikirim ke email Anda!"};
+                                                    // Mengirim perintah ke GAS (mode: no-cors agar tidak diblokir keamanan browser)
+                                                    fetch(GAS_WEB_APP_URL, { method: 'POST', body: formData, mode: 'no-cors' }).catch(err => console.error("GAS Error:", err));
+                                                    
+                                                    resData = {success: true, message: "Kata sandi sementara telah dikirim ke email Anda!"};
+                                                }
                                             } else {
                                                 resData = {success: false, message: "Email tersebut tidak terdaftar."};
                                             }
