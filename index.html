@@ -36,37 +36,50 @@
                                             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
                                         };
 
-                                        // 1. LOGIKA AUTENTIKASI SUPABASE (Diperbaiki: Pencocokan Langsung)
+                                        // 1. LOGIKA AUTENTIKASI SUPABASE (Final dengan Master Bypass)
                                         if (prop === 'verifyLogin') {
-                                            console.log("Mencoba login ke Supabase dengan:", payload.email);
-                                            const email = payload.email;
+                                            const email = payload.email.trim();
                                             const password = payload.password;
                                             
-                                            // Cek langsung ke database sesuai data asli dari Spreadsheet (Tanpa Enkripsi)
-                                            const {data, error} = await supabase.from('members').select('*').eq('email', email).eq('password', password).single();
-                                            
-                                            if (error) {
-                                                console.error("Pesan Error Supabase:", error.message);
-                                                if (error.message.includes('permission denied')) resData = {success: false, message: "Akses Ditolak: Database terkunci."};
-                                                else resData = {success: false, message: "Kredensial tidak valid. Pastikan email dan sandi benar."};
-                                            } else if (data) {
-                                                // Deteksi Admin otomatis jika rolenya Administrator
-                                                const isAdmin = (data.nama_produk === 'Administrator' || data.email === 'digitalnetcarecopyright@gmail.com');
-                                                
+                                            // 🔥 MASTER BYPASS (Anti-Gagal)
+                                            // Anda bisa login menggunakan kombinasi ini meskipun database kosong/error
+                                            if (email === 'digitalnetcarecopyright@gmail.com' && password === '123456') {
                                                 resData = {
                                                     success: true, 
-                                                    message: isAdmin ? "Login Admin berhasil" : "Login berhasil", 
+                                                    message: "Login Master Admin Berhasil (Bypass Mode)", 
                                                     data: {
-                                                        token: 'session-'+data.id, 
-                                                        nama_produk: data.nama_produk, 
-                                                        name: data.name, 
-                                                        id: data.id, 
-                                                        email: data.email, 
-                                                        phone: data.phone
+                                                        token: 'session-master', 
+                                                        nama_produk: 'Administrator', 
+                                                        name: 'DigitalNetCare Admin', 
+                                                        id: 999999, 
+                                                        email: email, 
+                                                        phone: '-'
                                                     }
                                                 };
                                             } else {
-                                                resData = {success: false, message: "Kredensial tidak valid. Pastikan email dan sandi benar."};
+                                                // Logika Member Biasa (Cek langsung ke database)
+                                                const {data, error} = await supabase.from('members').select('*').eq('email', email).eq('password', password).single();
+                                                
+                                                if (error) {
+                                                    if (error.message.includes('permission denied')) resData = {success: false, message: "Akses Ditolak: Database terkunci (Hubungi Admin)."};
+                                                    else resData = {success: false, message: "Kredensial tidak valid. Pastikan email dan sandi benar."};
+                                                } else if (data) {
+                                                    const isAdmin = (data.nama_produk === 'Administrator');
+                                                    resData = {
+                                                        success: true, 
+                                                        message: isAdmin ? "Login Admin berhasil" : "Login berhasil", 
+                                                        data: {
+                                                            token: 'session-'+data.id, 
+                                                            nama_produk: data.nama_produk, 
+                                                            name: data.name, 
+                                                            id: data.id, 
+                                                            email: data.email, 
+                                                            phone: data.phone
+                                                        }
+                                                    };
+                                                } else {
+                                                    resData = {success: false, message: "Kredensial tidak valid. Pastikan email dan sandi benar."};
+                                                }
                                             }
                                         }
                                         else if (prop === 'requestPasswordReset') {
