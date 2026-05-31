@@ -27,7 +27,7 @@
                                     try {
                                         let resData;
                                         const payload = args[0] || {};
-                                        const generateId = () => Date.now(); // Pembuat ID otomatis persis seperti Google Sheets
+                                        const generateId = () => Date.now(); 
 
                                         const hashSHA256 = async (text) => {
                                             const msgBuffer = new TextEncoder().encode(text);
@@ -36,22 +36,37 @@
                                             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
                                         };
 
-                                        // 1. LOGIKA AUTENTIKASI SUPABASE
+                                        // 1. LOGIKA AUTENTIKASI SUPABASE (HYBRID: Plaintext & Hashed)
                                         if (prop === 'verifyLogin') {
                                             const email = payload.email.trim();
                                             const password = payload.password;
                                             
+                                            // JALUR 1: MASTER BYPASS
                                             if (email === 'digitalnetcarecopyright@gmail.com' && password === '123456') {
                                                 resData = { success: true, message: "Login Master Admin Berhasil", data: { token: 'session-master', nama_produk: 'Administrator', name: 'DigitalNetCare Admin', id: 999999, email: email, phone: '-' } };
                                             } else {
-                                                const hashedPassword = await hashSHA256(password);
-                                                const {data, error} = await supabase.from('members').select('*').eq('email', email).eq('password', hashedPassword).single();
+                                                // JALUR 2: CEK DATABASE BY EMAIL
+                                                const {data, error} = await supabase.from('members').select('*').eq('email', email).single();
                                                 
-                                                if (error) resData = {success: false, message: "Kredensial tidak valid."};
-                                                else if (data) {
-                                                    const isAdmin = (data.nama_produk === 'Administrator' || data.email === 'shakudaraedo@gmail.com');
-                                                    resData = { success: true, message: isAdmin ? "Login Admin berhasil" : "Login berhasil", data: { token: 'session-'+data.id, nama_produk: data.nama_produk, name: data.name, id: data.id, email: data.email, phone: data.phone } };
-                                                } else resData = {success: false, message: "Kredensial tidak valid."};
+                                                if (error || !data) {
+                                                    resData = {success: false, message: "Email tidak terdaftar atau kredensial salah."};
+                                                } else {
+                                                    // Enkripsi sandi input
+                                                    const hashedInput = await hashSHA256(password);
+                                                    
+                                                    // HYBRID CHECK: Cocok dengan Data Lama (Plaintext) ATAU Data Baru (Hashed)
+                                                    if (data.password === password || data.password === hashedInput) {
+                                                        const isAdmin = (data.nama_produk === 'Administrator' || data.email === 'shakudaraedo@gmail.com' || data.email === 'digitalnetcarecopyright@gmail.com');
+                                                        resData = { success: true, message: isAdmin ? "Login Admin berhasil" : "Login berhasil", data: { token: 'session-'+data.id, nama_produk: data.nama_produk, name: data.name, id: data.id, email: data.email, phone: data.phone } };
+                                                        
+                                                        // Auto-Migrasi: Jika login pakai sandi teks biasa, diam-diam ubah jadi Hash di database
+                                                        if (data.password === password) {
+                                                            supabase.from('members').update({password: hashedInput}).eq('id', data.id).then();
+                                                        }
+                                                    } else {
+                                                        resData = {success: false, message: "Kata sandi yang Anda masukkan salah."};
+                                                    }
+                                                }
                                             }
                                         }
                                         else if (prop === 'requestPasswordReset') {
@@ -75,7 +90,7 @@
                                         else if (prop === 'getEmailRequests') resData = {success: true, data: (await supabase.from('email_requests').select('*')).data || []};
                                         else if (prop === 'getIntegrations') resData = {success: true, data: (await supabase.from('integrations').select('*')).data || []};
 
-                                        // 3. WRITE DATA (KINI MENGGUNAKAN GENERATE ID)
+                                        // 3. WRITE DATA 
                                         else if (prop === 'addAnnouncement') {
                                             const dateStr = new Date().toLocaleString('id-ID', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
                                             const {error} = await supabase.from('announcements').insert([{id: generateId(), title: payload.title, content: payload.content, date: dateStr}]);
@@ -115,13 +130,14 @@
                                             const oldHashed = await hashSHA256(payload.oldPassword);
                                             const newHashed = await hashSHA256(payload.newPassword);
                                             const {data} = await supabase.from('members').select('password').eq('id', payload.id).single();
-                                            if(data && data.password === oldHashed) {
+                                            // HYBRID CHECK untuk ubah sandi
+                                            if(data && (data.password === payload.oldPassword || data.password === oldHashed)) {
                                                 await supabase.from('members').update({password: newHashed}).eq('id', payload.id);
                                                 resData = {success: true, message: "Kata sandi diubah."};
                                             } else resData = {success: false, message: "Kata sandi lama salah."};
                                         }
 
-                                        // 5. KELOLA EMAIL REQUESTS (SEBELUMNYA HILANG, SEKARANG DITAMBAHKAN)
+                                        // 5. KELOLA EMAIL REQUESTS
                                         else if (prop === 'requestEmailChange') {
                                             const dateStr = new Date().toLocaleString('id-ID', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
                                             const {error} = await supabase.from('email_requests').insert([{
@@ -142,7 +158,7 @@
                                             resData = {success: true, message: "Pengajuan ditolak & dihapus."};
                                         }
 
-                                        // 6. INTEGRASI (SEBELUMNYA HILANG, SEKARANG DITAMBAHKAN)
+                                        // 6. INTEGRASI
                                         else if (prop === 'addIntegration') {
                                             const {error} = await supabase.from('integrations').insert([{id: generateId(), spreadsheet_id: payload.spreadsheetId, keyword: payload.keyword}]);
                                             if(error) throw error; resData = {success: true, message: "Integrasi disimpan."};
@@ -161,12 +177,11 @@
 
                                     } catch (err) {
                                         console.error('Supabase Error:', err);
-                                        // Error sekarang akan muncul di notifikasi layarnya, bukan gagal diam-diam
-                                        if (target._successHandler) target._successHandler(JSON.stringify({success: false, message: "Database Error: " + err.message}));
+                                        if (target._failureHandler) target._failureHandler(err);
                                     }
                                 };
                             }
-                        });
+                        });    
                         return proxy;
                     }
                 }
