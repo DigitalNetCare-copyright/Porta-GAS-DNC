@@ -116,12 +116,18 @@
                                         // 4. MEMBER MANAGEMENT & PROFIL
                                         else if (prop === 'addMember') {
                                             const defaultHashed = await hashSHA256('digitalnetcare');
-                                            const {error} = await supabase.from('members').insert([{id: generateId(), name: payload.name, phone: payload.phone, email: payload.email, password: defaultHashed, nama_produk: 'Member'}]);
+                                            const produkInput = payload.nama_produk || 'Member Biasa';
+                                            const {error} = await supabase.from('members').insert([{id: generateId(), name: payload.name, phone: payload.phone, email: payload.email, password: defaultHashed, nama_produk: produkInput}]);
                                             if(error) throw error; resData = {success: true, message: "Berhasil didaftarkan."};
                                         }
                                         else if (prop === 'editMember') {
-                                            await supabase.from('members').update({name: payload.name, phone: payload.phone, email: payload.email}).eq('id', payload.id);
-                                            resData = {success: true, message: "Data diupdate."};
+                                            let updateData = {name: payload.name, phone: payload.phone, email: payload.email, nama_produk: payload.nama_produk};
+                                            // Jika admin mengisi form sandi baru, ikut dienkripsi & diupdate ke Supabase
+                                            if (payload.new_password && payload.new_password.trim() !== '') {
+                                                updateData.password = await hashSHA256(payload.new_password.trim());
+                                            }
+                                            await supabase.from('members').update(updateData).eq('id', payload.id);
+                                            resData = {success: true, message: "Data & Akses berhasil diperbarui."};
                                         }
                                         else if (prop === 'removeMember') { await supabase.from('members').delete().eq('id', payload); resData = {success: true, message: "Akses dicabut."}; }
                                         else if (prop === 'updateProfile') {
@@ -1042,7 +1048,7 @@
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300">${member.email}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300 font-mono">${member.password}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
-                                        <button onclick="adminEditMember(${member.id}, '${member.name}', '${member.phone || ''}', '${member.email}')" class="text-blue-400 hover:text-blue-300 font-medium mr-3"><i class="fa-solid fa-pen-to-square"></i> Edit</button>
+                                        <button onclick="adminEditMember(${member.id}, '${member.name}', '${member.phone || ''}', '${member.email}', '${member.nama_produk || ''}')" class="text-blue-400 hover:text-blue-300 font-medium mr-3"><i class="fa-solid fa-pen-to-square"></i> Edit</button>
                                         <button onclick="adminRemoveMember(${member.id})" class="text-red-400 hover:text-red-300 font-medium"><i class="fa-solid fa-trash"></i> Cabut</button>
                                     </td>
                                 </tr>
@@ -1122,11 +1128,19 @@
         function adminAddMember() {
             Swal.fire({
                 title: 'Tambah Member Baru',
-                html: '<input id="swal-input1" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="Nama Lengkap">' +
-                      '<input id="swal-input2" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="Nomor Telepon / WA">' +
-                      '<input id="swal-input3" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="Alamat Email">',
+                html: '<input id="swal-input1" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" placeholder="Nama Lengkap">' +
+                      '<input id="swal-input2" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" placeholder="Nomor Telepon / WA">' +
+                      '<input id="swal-input3" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" placeholder="Alamat Email">' +
+                      '<input id="swal-input4" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" placeholder="Nama Produk (cth: Web App GAS Builder)">',
                 focusConfirm: false, showCancelButton: true, confirmButtonText: 'Simpan', background: '#1e293b', color: '#fff',
-                preConfirm: () => { return { name: document.getElementById('swal-input1').value, phone: document.getElementById('swal-input2').value, email: document.getElementById('swal-input3').value } }
+                preConfirm: () => { 
+                    return { 
+                        name: document.getElementById('swal-input1').value, 
+                        phone: document.getElementById('swal-input2').value, 
+                        email: document.getElementById('swal-input3').value,
+                        nama_produk: document.getElementById('swal-input4').value
+                    } 
+                }
             }).then((result) => {
                 if (result.isConfirmed && result.value.email) {
                     showLoading('Menyimpan Data...');
@@ -1138,14 +1152,26 @@
             });
         }
 
-        function adminEditMember(id, name, phone, email) {
+        function adminEditMember(id, name, phone, email, nama_produk) {
             Swal.fire({
                 title: 'Edit Data Member',
-                html: `<input id="swal-input1" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" value="${name}" placeholder="Nama Lengkap">` +
-                      `<input id="swal-input2" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" value="${phone}" placeholder="Nomor Telepon / WA">` +
-                      `<input id="swal-input3" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" value="${email}" placeholder="Alamat Email">`,
+                html: `<input id="swal-input1" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" value="${name}" placeholder="Nama Lengkap">` +
+                      `<input id="swal-input2" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" value="${phone}" placeholder="Nomor Telepon / WA">` +
+                      `<input id="swal-input3" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" value="${email}" placeholder="Alamat Email">` +
+                      `<input id="swal-input4" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" value="${nama_produk}" placeholder="Nama Produk / Akses">` +
+                      `<hr class="border-slate-700 my-3 w-4/5 mx-auto">` +
+                      `<input id="swal-input-pass" type="password" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm mb-2" placeholder="Reset Sandi (Kosongkan jika tidak diganti)">`,
                 focusConfirm: false, showCancelButton: true, confirmButtonText: 'Update', background: '#1e293b', color: '#fff',
-                preConfirm: () => { return { id: id, name: document.getElementById('swal-input1').value, phone: document.getElementById('swal-input2').value, email: document.getElementById('swal-input3').value } }
+                preConfirm: () => { 
+                    return { 
+                        id: id, 
+                        name: document.getElementById('swal-input1').value, 
+                        phone: document.getElementById('swal-input2').value, 
+                        email: document.getElementById('swal-input3').value,
+                        nama_produk: document.getElementById('swal-input4').value,
+                        new_password: document.getElementById('swal-input-pass').value
+                    } 
+                }
             }).then((result) => {
                 if (result.isConfirmed && result.value.email) {
                     showLoading('Memperbarui Data...');
