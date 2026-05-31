@@ -1,14 +1,1246 @@
 <!DOCTYPE html>
-<html>
+<html lang="id" class="dark">
 <head>
-    <title>Portal GAS DNC - DigitalNetCare</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portal GAS DNC</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        // ⚠️ PENTING: Ganti dengan URL dan ANON KEY Anda
+        const SUPABASE_URL = 'https://czuasvtbkagfwlsizpdp.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN6dWFzdnRia2FnZndsc2l6cGRwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1NjEzOTcsImV4cCI6MjA5NTEzNzM5N30.Fwo29KrrNnKr4HKQBdo6Zs6FedGgp_SWb15EWNzgtQA';
+
+        if(typeof google === 'undefined') {
+            window.google = {
+                script: {
+                    get run() {
+                        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+                        const state = { _successHandler: null, _failureHandler: null };
+
+                        const proxy = new Proxy(state, {
+                            get: (target, prop) => {
+                                if (prop === 'withSuccessHandler') return (cb) => { target._successHandler = cb; return proxy; };
+                                if (prop === 'withFailureHandler') return (cb) => { target._failureHandler = cb; return proxy; };
+
+                                return async (...args) => {
+                                    try {
+                                        let resData;
+                                        const payload = args[0] || {};
+
+                                        // 🛡️ FUNGSI BANTUAN: Enkripsi SHA-256
+                                        const hashSHA256 = async (text) => {
+                                            const msgBuffer = new TextEncoder().encode(text);
+                                            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+                                            const hashArray = Array.from(new Uint8Array(hashBuffer));
+                                            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+                                        };
+
+                                        // 1. LOGIKA AUTENTIKASI SUPABASE (Diperbaiki & Final)
+                                        if (prop === 'verifyLogin') {
+                                            console.log("Mencoba login ke Supabase dengan:", payload.email);
+                                            const email = payload.email;
+                                            const password = payload.password;
+                                            
+                                            // Bypass Khusus Super Admin (Membaca password biasa)
+                                            if (email === 'shakudaraedo@gmail.com' && password === 'Sanigya091020$') {
+                                                const {data, error} = await supabase.from('members').select('*').eq('email', email).single();
+                                                if(data) {
+                                                    resData = {success: true, message: "Login Admin berhasil", data: {token: 'session-'+data.id, nama_produk: 'Administrator', name: data.name, id: data.id, email: data.email, phone: data.phone}};
+                                                } else {
+                                                    resData = {success: false, message: "Akun Admin tidak ditemukan di database."};
+                                                }
+                                            } else {
+                                                // Logika Member Biasa (Sandi dienkripsi dulu sebelum dicocokkan)
+                                                const hashedPassword = await hashSHA256(password);
+                                                const {data, error} = await supabase.from('members').select('*').eq('email', email).eq('password', hashedPassword).single();
+                                                
+                                                if (error) {
+                                                    console.error("Pesan Error Supabase:", error.message);
+                                                    if (error.message.includes('permission denied')) resData = {success: false, message: "Akses Ditolak: Database terkunci."};
+                                                    else resData = {success: false, message: "Kredensial tidak valid. Pastikan email dan sandi benar."};
+                                                } else if (data) {
+                                                    resData = {success: true, message: "Login berhasil", data: {token: 'session-'+data.id, nama_produk: data.nama_produk, name: data.name, id: data.id, email: data.email, phone: data.phone}};
+                                                } else {
+                                                    resData = {success: false, message: "Kredensial tidak valid. Pastikan email dan sandi benar."};
+                                                }
+                                            }
+                                        }
+                                        else if (prop === 'requestPasswordReset') {
+                                            const {data} = await supabase.from('members').select('id').eq('email', args[0]).single();
+                                            if (data) resData = {success: true, message: "Instruksi pemulihan sandi dikirim. (Hubungi Admin)"};
+                                            else resData = {success: false, message: "Email tersebut tidak terdaftar."};
+                                        }
+
+                                        // 2. DASHBOARD STATS
+                                        else if (prop === 'getStats') {
+                                            const media = await supabase.from('media').select('id', {count: 'exact', head: true});
+                                            const apps = await supabase.from('apps').select('id', {count: 'exact', head: true});
+                                            const ann = await supabase.from('announcements').select('id', {count: 'exact', head: true});
+                                            resData = {success: true, data: {materi_count: media.count||0, template_count: apps.count||0, pengumuman_count: ann.count||0}};
+                                        }
+
+                                        // 3. READ DATA (GET)
+                                        else if (prop === 'getAnnouncements') resData = {success: true, data: (await supabase.from('announcements').select('*').order('id', {ascending: false})).data || []};
+                                        else if (prop === 'getTools') resData = {success: true, data: (await supabase.from('tools').select('*').order('id', {ascending: false})).data || []};
+                                        else if (prop === 'getMedia') resData = {success: true, data: (await supabase.from('media').select('*').order('id', {ascending: false})).data || []};
+                                        else if (prop === 'getApps') resData = {success: true, data: (await supabase.from('apps').select('*').order('id', {ascending: false})).data || []};
+                                        else if (prop === 'getMembers') resData = {success: true, data: ((await supabase.from('members').select('*').order('name', {ascending: true})).data || []).map(m => ({...m, password: 'TERENKRIPSI'}))};
+                                        else if (prop === 'getEmailRequests') resData = {success: true, data: (await supabase.from('email_requests').select('*')).data || []};
+                                        else if (prop === 'getIntegrations') resData = {success: true, data: (await supabase.from('integrations').select('*')).data || []};
+
+                                        // 4. WRITE DATA
+                                        else if (prop === 'addAnnouncement') {
+                                            const dateStr = new Date().toLocaleString('id-ID', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+                                            await supabase.from('announcements').insert([{title: payload.title, content: payload.content, date: dateStr}]);
+                                            resData = {success: true, message: "Pengumuman diposting."};
+                                        }
+                                        else if (prop === 'removeAnnouncement') { await supabase.from('announcements').delete().eq('id', payload); resData = {success: true, message: "Dihapus."}; }
+                                        else if (prop === 'addTool') { await supabase.from('tools').insert([payload]); resData = {success: true, message: "Tool ditambah."}; }
+                                        else if (prop === 'addMedia') { await supabase.from('media').insert([payload]); resData = {success: true, message: "Media ditambah."}; }
+                                        else if (prop === 'addApp') { await supabase.from('apps').insert([payload]); resData = {success: true, message: "App ditambah."}; }
+
+                                        // 5. MEMBER MANAGEMENT & PROFIL
+                                        else if (prop === 'addMember') {
+                                            // Sandi bawaan 'digitalnetcare' dienkripsi sebelum masuk database
+                                            const defaultHashed = await hashSHA256('digitalnetcare');
+                                            await supabase.from('members').insert([{name: payload.name, phone: payload.phone, email: payload.email, password: defaultHashed, nama_produk: 'Member'}]);
+                                            resData = {success: true, message: "Berhasil didaftarkan."};
+                                        }
+                                        else if (prop === 'editMember') {
+                                            await supabase.from('members').update({name: payload.name, phone: payload.phone, email: payload.email}).eq('id', payload.id);
+                                            resData = {success: true, message: "Data diupdate."};
+                                        }
+                                        else if (prop === 'removeMember') { await supabase.from('members').delete().eq('id', payload); resData = {success: true, message: "Akses dicabut."}; }
+
+                                        else if (prop === 'updateProfile') {
+                                            await supabase.from('members').update({name: payload.name, phone: payload.phone}).eq('id', payload.id);
+                                            resData = {success: true, message: "Profil berhasil diperbarui.", data: payload};
+                                        }
+                                        else if (prop === 'updatePassword') {
+                                            const oldHashed = await hashSHA256(payload.oldPassword);
+                                            const newHashed = await hashSHA256(payload.newPassword);
+                                            const {data} = await supabase.from('members').select('password').eq('id', payload.id).single();
+
+                                            if(data && data.password === oldHashed) {
+                                                await supabase.from('members').update({password: newHashed}).eq('id', payload.id);
+                                                resData = {success: true, message: "Kata sandi diubah."};
+                                            } else {
+                                                resData = {success: false, message: "Kata sandi lama salah."};
+                                            }
+                                        }
+                                        // Fallback
+                                        if(!resData) resData = {success: true, message: "Aksi berhasil"};
+
+                                        if (target._successHandler) target._successHandler(JSON.stringify(resData));
+                                    } catch (err) {
+                                        console.error('Bypass Error:', err);
+                                        if (target._failureHandler) target._failureHandler(err);
+                                    }
+                                };
+                            }
+                        });
+                        return proxy;
+                    }
+                }
+            };
+        }
+    </script>
+
+    <script>
+        tailwind = { config: { darkMode: 'class', theme: { extend: {} } } };
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: #f4f4f4; }
-        iframe { width: 100%; height: 100%; border: none; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+
+        .glass-panel {
+            background: rgba(17, 24, 39, 0.75);
+            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+        .glass-nav {
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .neon-shadow { box-shadow: 0 0 15px rgba(59, 130, 246, 0.5); }
+        .skeleton {
+            background: linear-gradient(110deg, rgba(255,255,255,0.05) 8%, rgba(255,255,255,0.1) 18%, rgba(255,255,255,0.05) 33%);
+            border-radius: 5px; background-size: 200% 100%; animation: 1.5s shine linear infinite;
+        }
+        @keyframes shine { to { background-position-x: -200%; } }
+
+        #page-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.8); z-index: 9999;
+            justify-content: center; align-items: center; backdrop-filter: blur(5px);
+        }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        
+        /* Navbar Transitions */
+        .nav-link { position: relative; padding-bottom: 0.25rem; transition: color 0.3s; }
+        .nav-link::after {
+            content: ''; position: absolute; width: 0; height: 2px; bottom: 0; left: 0;
+            background-color: #3b82f6; transition: width 0.3s ease;
+        }
+        .nav-link:hover::after, .nav-link.active::after { width: 100%; }
+        .nav-link.active { color: #fff; font-weight: 600; }
+        
+        .view-section { display: none; animation: fadeIn 0.4s ease-out forwards; }
+        .view-section.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
-<body>
-    <iframe src="https://script.google.com/macros/s/AKfycbwa2pKYUny1lWIztgvb1WLpPpCY-I2yOTwTsdWpsjpGKAC4CCKIf594UF5P0OfvHKNj/exec"></iframe>
+<body class="overflow-hidden bg-slate-900 text-gray-100 transition-colors duration-300">
+
+    <div id="page-overlay" class="flex flex-col">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-t-2 border-blue-400 mb-4"></div>
+        <span class="text-blue-400 font-medium tracking-wide" id="overlay-text">MEMPROSES...</span>
+    </div>
+
+    <div id="profile-modal" class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex justify-center items-center">
+        <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative mx-4 max-h-[90vh] overflow-y-auto">
+            <button onclick="closeProfile()" class="absolute top-4 right-4 text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+            <h3 class="text-xl font-bold text-white mb-5 flex items-center"><i class="fa-solid fa-circle-user text-blue-400 mr-2"></i> Profil Saya</h3>
+            
+            <div class="mb-3 bg-slate-900/50 p-3 rounded-lg border border-slate-700 flex justify-between items-center">
+                <div>
+                    <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Nama Lengkap</p>
+                    <p id="profile-name" class="text-white font-medium">-</p>
+                </div>
+                <button id="btn-edit-name" onclick="editProfileName()" class="text-blue-400 hover:text-blue-300 p-2"><i class="fa-solid fa-pen-to-square"></i></button>
+            </div>
+
+            <div class="mb-3 bg-slate-900/50 p-3 rounded-lg border border-slate-700 flex justify-between items-center">
+                <div>
+                    <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">No. Handphone</p>
+                    <p id="profile-phone" class="text-white font-medium">-</p>
+                </div>
+                <button id="btn-edit-phone" onclick="editProfilePhone()" class="text-blue-400 hover:text-blue-300 p-2"><i class="fa-solid fa-pen-to-square"></i></button>
+            </div>
+            
+            <div class="mb-6 bg-slate-900/50 p-3 rounded-lg border border-slate-700">
+                <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Email Terdaftar</p>
+                <p id="profile-email" class="text-white font-medium">-</p>
+            </div>
+
+            <div class="mb-5 border-b border-slate-700 pb-5">
+                <button id="btn-change-password" onclick="changePassword()" class="w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-2 rounded-lg transition-colors text-sm shadow-sm flex justify-center items-center">
+                    <i class="fa-solid fa-lock mr-2"></i> Ganti Kata Sandi
+                </button>
+            </div>
+            
+            <div class="pt-2">
+                <h4 class="text-sm font-semibold text-blue-400 mb-3"><i class="fa-solid fa-envelope-open-text mr-1"></i> Ajukan Ganti Email</h4>
+                <input type="email" id="new-email-input" placeholder="Ketik email baru..." class="w-full bg-slate-900 border border-slate-600 text-white px-3 py-2 rounded-lg mb-2 focus:outline-none focus:border-blue-500 text-sm">
+                <p class="text-[10px] text-slate-400 mb-3 italic">Mohon tunggu 1 x 24 jam, jika belum bisa silahkan hubungi admin.</p>
+                <button onclick="submitEmailRequest()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 rounded-lg transition-colors text-sm shadow-lg">Kirim Pengajuan</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="login-view" class="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 relative overflow-hidden transition-colors duration-500">
+        <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-600 rounded-full mix-blend-screen filter blur-[128px] opacity-40 animate-pulse"></div>
+        <div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-600 rounded-full mix-blend-screen filter blur-[128px] opacity-40 animate-pulse" style="animation-delay: 2s;"></div>
+
+        <div class="glass-panel p-10 rounded-2xl w-full max-w-md z-10 transform transition-all">
+            <div class="text-center mb-8">
+                <i class="fa-solid fa-rocket text-4xl text-blue-500 mb-4 neon-shadow rounded-full p-2"></i>
+                <h1 class="text-3xl font-bold tracking-tight text-white">Portal GAS <span class="text-blue-500">DNC</span></h1>
+                <p class="text-sm text-gray-400 mt-2">Sistem Manajemen Resource Terpadu</p>
+            </div>
+            
+            <form id="loginForm" onsubmit="handleLogin(event)" class="space-y-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Email Pengguna</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i class="fa-regular fa-envelope text-gray-500"></i></div>
+                        <input type="email" id="email" required class="block w-full pl-10 pr-3 py-3 border border-gray-600 rounded-lg bg-gray-800/50 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" placeholder="contoh@email.com">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Kata Sandi</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i class="fa-solid fa-lock text-gray-500"></i></div>
+                        <input type="password" id="password" required class="block w-full pl-10 pr-3 py-3 border border-gray-600 rounded-lg bg-gray-800/50 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" placeholder="••••••••">
+                    </div>
+                </div>
+                
+                <button type="submit" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 transition-all neon-shadow mt-4">
+                    MASUK SISTEM <i class="fa-solid fa-arrow-right ml-2 mt-0.5"></i>
+                </button>
+
+                <div class="mt-4 text-center">
+                    <a href="#" onclick="forgotPassword(event)" class="text-sm font-medium text-blue-400 hover:text-blue-300 transition-colors">Lupa Kata Sandi?</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="dashboard-wrapper" class="hidden flex-col h-screen w-full relative">
+        
+        <header class="glass-nav text-white z-50 sticky top-0 transition-colors duration-300">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between h-16 items-center">
+                    
+                    <div class="flex-shrink-0 flex items-center cursor-pointer" onclick="switchView('dashboard')">
+                        <div class="w-8 h-8 rounded bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center mr-3 neon-shadow">
+                            <i class="fa-solid fa-rocket text-white text-sm"></i>
+                        </div>
+                        <span class="font-bold text-xl tracking-tight">Portal GAS <span class="text-blue-400">DNC</span></span>
+                    </div>
+
+                    <nav class="hidden md:flex space-x-8">
+                        <button onclick="switchView('dashboard')" class="nav-btn text-gray-300 hover:text-white px-3 py-2 text-sm font-medium nav-link active" data-target="dashboard">Dashboard</button>
+                        <button onclick="switchView('tools')" class="nav-btn text-gray-300 hover:text-white px-3 py-2 text-sm font-medium nav-link" data-target="tools">Tools Gas Builder</button>
+                        <button onclick="switchView('media')" class="nav-btn text-gray-300 hover:text-white px-3 py-2 text-sm font-medium nav-link" data-target="media">Media Pembelajaran</button>
+                        <button onclick="switchView('galeri')" class="nav-btn text-gray-300 hover:text-white px-3 py-2 text-sm font-medium nav-link" data-target="galeri">Galeri Apps DNC</button>
+                        <button onclick="switchView('admin')" class="nav-btn admin-feature hidden text-yellow-500 hover:text-yellow-400 px-3 py-2 text-sm font-medium nav-link" data-target="admin">Kelola Akses</button>
+                    </nav>
+
+                    <div class="hidden md:flex items-center space-x-3">
+                        <button class="text-gray-400 hover:text-white transition-colors p-2 rounded-full hover:bg-slate-800 mr-2"><i class="fa-regular fa-bell text-xl"></i></button>
+                        
+                        <div onclick="openProfile()" class="flex items-center space-x-3 bg-slate-800/80 px-3 py-1.5 rounded-full border border-slate-700 cursor-pointer hover:bg-slate-700 transition-colors">
+                            <div class="relative">
+                                <i class="fa-solid fa-circle-user text-3xl text-blue-400 bg-transparent rounded-full"></i>
+                                <div id="ui-status-dot" class="absolute bottom-0 right-0 h-2.5 w-2.5 bg-green-500 rounded-full border-2 border-slate-800 hidden"></div>
+                            </div>
+                            <div class="flex flex-col text-left justify-center h-full max-w-[120px]">
+                                <span id="ui-name" class="text-sm font-semibold text-white truncate block w-full"></span>
+                                <span id="ui-role" class="text-[10px] text-blue-300 uppercase tracking-wider font-bold block mt-0.5"></span>
+                            </div>
+                        </div>
+
+                        <button onclick="confirmLogout()" class="ml-2 text-gray-400 hover:text-red-400 transition-colors p-2 rounded-full hover:bg-slate-800" title="Keluar"><i class="fa-solid fa-power-off text-lg"></i></button>
+                    </div>
+
+                    <div class="flex items-center md:hidden space-x-2">
+                        <button onclick="toggleMobileMenu()" class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-white hover:bg-slate-800 focus:outline-none">
+                            <i id="mobile-menu-icon" class="fa-solid fa-bars text-2xl"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="mobile-menu" class="hidden md:hidden bg-slate-900 border-t border-slate-800 shadow-2xl absolute w-full z-40">
+                <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+                    <button onclick="switchView('dashboard')" class="w-full text-left text-blue-400 block px-3 py-2 rounded-md text-base font-medium bg-slate-800 nav-btn-mobile" data-target="dashboard">Dashboard</button>
+                    <button onclick="switchView('tools')" class="w-full text-left text-gray-300 hover:bg-slate-800 block px-3 py-2 rounded-md text-base font-medium nav-btn-mobile" data-target="tools">Tools Gas Builder</button>
+                    <button onclick="switchView('media')" class="w-full text-left text-gray-300 hover:bg-slate-800 block px-3 py-2 rounded-md text-base font-medium nav-btn-mobile" data-target="media">Media Pembelajaran</button>
+                    <button onclick="switchView('galeri')" class="w-full text-left text-gray-300 hover:bg-slate-800 block px-3 py-2 rounded-md text-base font-medium nav-btn-mobile" data-target="galeri">Galeri Apps DNC</button>
+                    <button onclick="switchView('admin')" class="w-full text-left admin-feature hidden text-yellow-500 hover:bg-slate-800 block px-3 py-2 rounded-md text-base font-medium nav-btn-mobile" data-target="admin">Kelola Akses</button>
+                </div>
+                <div class="pt-4 pb-3 border-t border-slate-800">
+                    <div class="flex items-center px-5 cursor-pointer" onclick="openProfile()">
+                        <div class="flex-shrink-0"><i class="fa-solid fa-circle-user text-3xl text-blue-400 bg-transparent rounded-full"></i></div>
+                        <div class="ml-3">
+                            <div id="mobile-ui-name" class="text-base font-medium leading-none text-white">Member</div>
+                            <div class="text-sm font-medium leading-none text-gray-400 mt-1">Lihat Profil & Ganti Email</div>
+                        </div>
+                    </div>
+                    <div class="mt-4 px-5">
+                        <button onclick="confirmLogout()" class="w-full bg-slate-800 py-2 rounded-lg text-red-400 hover:bg-slate-700 flex justify-center items-center font-medium">
+                            <i class="fa-solid fa-power-off mr-2"></i> Keluar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-1 overflow-y-auto w-full transition-colors duration-300 relative">
+            <div class="max-w-7xl mx-auto p-6 scroll-smooth">
+                
+                <div id="view-dashboard" class="view-section active">
+                    <div class="relative rounded-2xl shadow-lg mb-8 overflow-hidden bg-slate-800 border border-slate-700 p-8 z-10 transition-colors">
+                        <div class="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-transparent via-blue-900/10 to-indigo-900/10 opacity-50 -z-10"></div>
+                        <div class="absolute -top-24 -right-24 w-64 h-64 bg-blue-600 rounded-full mix-blend-screen filter blur-3xl opacity-20"></div>
+
+                        <div class="relative z-10 flex flex-col md:flex-row items-center justify-between">
+                            <div>
+                                <h2 class="text-3xl font-extrabold text-white mb-2 flex items-center">
+                                    Selamat Datang, <span id="hero-name" class="ml-2 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-400 skeleton w-32 h-8 inline-block rounded"></span>!
+                                </h2>
+                                <p class="text-slate-300 text-sm md:text-base max-w-xl">Akses seluruh ekosistem digital Anda. Kelola materi pembelajaran, akses tools, dan tingkatkan skill anda dalam membuat WebApp.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div class="bg-slate-800 rounded-2xl shadow-sm border border-slate-700 p-6 flex items-center relative overflow-hidden">
+                            <div class="absolute w-2 h-full left-0 top-0 bg-blue-500"></div>
+                            <div class="p-4 rounded-xl bg-blue-900/30 text-blue-400 mr-5"><i class="fa-solid fa-graduation-cap text-2xl"></i></div>
+                            <div>
+                                <p class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-1">Media Pembelajaran</p>
+                                <h4 id="stat-materi" class="text-3xl font-bold text-white skeleton w-16 h-8 rounded">0</h4>
+                            </div>
+                        </div>
+                        <div class="bg-slate-800 rounded-2xl shadow-sm border border-slate-700 p-6 flex items-center relative overflow-hidden">
+                            <div class="absolute w-2 h-full left-0 top-0 bg-indigo-500"></div>
+                            <div class="p-4 rounded-xl bg-indigo-900/30 text-indigo-400 mr-5"><i class="fa-solid fa-layer-group text-2xl"></i></div>
+                            <div>
+                                <p class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-1">Galeri Apps DNC</p>
+                                <h4 id="stat-template" class="text-3xl font-bold text-white skeleton w-16 h-8 rounded">0</h4>
+                            </div>
+                        </div>
+                        <div class="bg-slate-800 rounded-2xl shadow-sm border border-slate-700 p-6 flex items-center relative overflow-hidden">
+                            <div class="absolute w-2 h-full left-0 top-0 bg-teal-500"></div>
+                            <div class="p-4 rounded-xl bg-teal-900/30 text-teal-400 mr-5"><i class="fa-solid fa-bullhorn text-2xl"></i></div>
+                            <div>
+                                <p class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-1">Pengumuman</p>
+                                <h4 id="stat-pengumuman" class="text-3xl font-bold text-white skeleton w-16 h-8 rounded">0</h4>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-800 rounded-2xl shadow-sm border border-slate-700 overflow-hidden mb-8">
+                        <div class="px-6 py-5 border-b border-slate-700 flex justify-between items-center bg-slate-800/50">
+                            <h3 class="font-bold text-white text-lg flex items-center"><i class="fa-solid fa-rss text-blue-400 mr-2"></i> Papan Informasi</h3>
+                            <button onclick="fetchData('dashboard')" class="text-sm bg-slate-700 border border-slate-600 text-gray-300 hover:text-white px-3 py-1.5 rounded-lg shadow-sm transition-colors flex items-center">
+                                <i class="fa-solid fa-rotate-right mr-1"></i> Segarkan
+                            </button>
+                        </div>
+                        <div id="announcement-container" class="divide-y divide-slate-700"></div>
+                    </div>
+                </div>
+
+                <div id="view-tools" class="view-section">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h2 class="text-2xl font-bold text-white">Tools Gas Builder</h2>
+                            <p class="text-slate-400 text-sm mt-1">Daftar tautan GEMs dan utilitas script.</p>
+                        </div>
+                        <button onclick="adminAddTool()" class="admin-feature hidden bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-colors">
+                            <i class="fa-solid fa-plus mr-1"></i> Tautkan Tool Baru
+                        </button>
+                    </div>
+                    <div id="container-tools" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+                </div>
+
+                <div id="view-media" class="view-section">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h2 class="text-2xl font-bold text-white">Media Pembelajaran</h2>
+                            <p class="text-slate-400 text-sm mt-1">Akses video, PDF, dan modul pembelajaran.</p>
+                        </div>
+                        <button onclick="adminAddMedia()" class="admin-feature hidden bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-colors">
+                            <i class="fa-solid fa-upload mr-1"></i> Upload Media
+                        </button>
+                    </div>
+                    <div id="container-media" class="flex flex-col gap-6"></div>
+                </div>
+
+                <div id="view-galeri" class="view-section">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h2 class="text-2xl font-bold text-white">Galeri Apps DNC</h2>
+                            <p class="text-slate-400 text-sm mt-1">Jelajahi template WebApp dan project terstruktur.</p>
+                        </div>
+                        <button onclick="adminAddApp()" class="admin-feature hidden bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-colors">
+                            <i class="fa-solid fa-folder-plus mr-1"></i> Upload App
+                        </button>
+                    </div>
+                    <div id="container-galeri" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+                </div>
+
+                <div id="view-admin" class="view-section">
+                    
+                    <div class="mb-10">
+                        <h2 class="text-2xl font-bold text-blue-400 mb-4"><i class="fa-solid fa-inbox mr-2"></i> Kotak Masuk: Pengajuan Ganti Email</h2>
+                        <div class="bg-slate-800 rounded-xl shadow-sm border border-slate-700 overflow-hidden overflow-x-auto">
+                            <table class="min-w-full divide-y divide-slate-700">
+                                <thead class="bg-slate-900/50">
+                                    <tr>
+                                        <th class="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">Tanggal</th>
+                                        <th class="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">Nama Member</th>
+                                        <th class="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">Email Lama</th>
+                                        <th class="px-6 py-4 text-left text-xs font-semibold text-blue-400 uppercase">Email Baru</th>
+                                        <th class="px-6 py-4 text-right text-xs font-semibold text-slate-400 uppercase">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="container-email-requests" class="divide-y divide-slate-700"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="mb-10">
+                        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
+                            <div class="mb-4 md:mb-0">
+                                <h2 class="text-2xl font-bold text-teal-400"><i class="fa-solid fa-bullhorn mr-2"></i> Kelola Pengumuman Dashboard</h2>
+                                <p class="text-slate-400 text-sm mt-1">Sampaikan informasi terbaru kepada seluruh member.</p>
+                            </div>
+                            <button onclick="adminAddAnnouncement()" class="bg-teal-600 hover:bg-teal-500 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-colors shrink-0">
+                                <i class="fa-solid fa-plus mr-1"></i> Buat Pengumuman
+                            </button>
+                        </div>
+                        <div class="bg-slate-800 rounded-xl shadow-sm border border-slate-700 overflow-hidden overflow-x-auto">
+                            <table class="min-w-full divide-y divide-slate-700">
+                                <thead class="bg-slate-900/50">
+                                    <tr>
+                                        <th class="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase w-48">Tanggal</th>
+                                        <th class="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">Judul Pengumuman</th>
+                                        <th class="px-6 py-4 text-right text-xs font-semibold text-slate-400 uppercase w-32">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="container-admin-announcements" class="divide-y divide-slate-700"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="mb-10">
+                        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
+                            <div class="mb-4 md:mb-0">
+                                <h2 class="text-2xl font-bold text-yellow-500"><i class="fa-solid fa-users mr-2"></i> Manajemen Member</h2>
+                                <p class="text-slate-400 text-sm mt-1">Kelola data personal dan akses masuk member ke Portal.</p>
+                            </div>
+                            <button onclick="adminAddMember()" class="bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-colors shrink-0">
+                                <i class="fa-solid fa-user-plus mr-1"></i> Tambah Member
+                            </button>
+                        </div>
+                        <div class="bg-slate-800 rounded-xl shadow-sm border border-slate-700 overflow-hidden overflow-x-auto">
+                            <table class="min-w-full divide-y divide-slate-700">
+                                <thead class="bg-slate-900/50">
+                                    <tr>
+                                        <th class="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase w-16">No.</th>
+                                        <th class="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">Nama Lengkap</th>
+                                        <th class="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">No. Telepon</th>
+                                        <th class="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">Email Terdaftar</th>
+                                        <th class="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">Kata Sandi</th>
+                                        <th class="px-6 py-4 text-right text-xs font-semibold text-slate-400 uppercase">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="container-members" class="divide-y divide-slate-700"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
+                            <div class="mb-4 md:mb-0">
+                                <h2 class="text-2xl font-bold text-indigo-400"><i class="fa-solid fa-link mr-2"></i> Integrasi Sistem (Auto-Register)</h2>
+                                <p class="text-slate-400 text-sm mt-1">Tarik data member otomatis dari Google Spreadsheet lain.</p>
+                            </div>
+                            <button onclick="adminAddIntegration()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-colors shrink-0">
+                                Tambah Integrasi
+                            </button>
+                        </div>
+                        <div class="bg-slate-800 rounded-xl shadow-sm border border-slate-700 overflow-hidden overflow-x-auto">
+                            <table class="min-w-full divide-y divide-slate-700">
+                                <thead class="bg-slate-900/50">
+                                    <tr>
+                                        <th class="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">ID Spreadsheet</th>
+                                        <th class="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">Filter Keyword</th>
+                                        <th class="px-6 py-4 text-right text-xs font-semibold text-slate-400 uppercase">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="container-integrations" class="divide-y divide-slate-700"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="text-center pb-6 mt-16">
+                    <div class="inline-flex items-center justify-center px-4 py-1.5 border border-slate-700 rounded-full bg-slate-800 shadow-sm text-xs font-medium text-slate-400">
+                        <i class="fa-solid fa-shield-halved mr-1.5 text-slate-500"></i> System Crafted by DigitalNetCare @copyright
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const Toast = Swal.mixin({
+            toast: true, position: 'top-end', showConfirmButton: false,
+            timer: 3000, timerProgressBar: true, background: '#1e293b', color: '#fff'
+        });
+
+        function showLoading(text) {
+            const overlay = document.getElementById('page-overlay');
+            document.getElementById('overlay-text').textContent = text;
+            overlay.style.display = 'flex';
+        }
+        function hideLoading() { document.getElementById('page-overlay').style.display = 'none'; }
+
+        // --- SPA LOGIC ---
+        function switchView(targetId) {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+            const targetView = document.getElementById('view-' + targetId);
+            if(targetView) targetView.classList.add('active');
+
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                if(btn.dataset.target === targetId) { btn.classList.add('active', 'text-white'); btn.classList.remove('text-gray-300'); }
+                else { btn.classList.remove('active', 'text-white'); btn.classList.add('text-gray-300'); }
+            });
+            document.querySelectorAll('.nav-btn-mobile').forEach(btn => {
+                if(btn.dataset.target === targetId) { btn.classList.replace('text-gray-300', 'text-blue-400'); btn.classList.replace('bg-transparent', 'bg-slate-800'); }
+                else { btn.classList.replace('text-blue-400', 'text-gray-300'); }
+            });
+
+            document.getElementById('mobile-menu').classList.add('hidden');
+            document.getElementById('mobile-menu-icon').classList.replace('fa-xmark', 'fa-bars');
+
+            fetchData(targetId);
+        }
+
+        function toggleMobileMenu() {
+            const menu = document.getElementById('mobile-menu');
+            const icon = document.getElementById('mobile-menu-icon');
+            menu.classList.toggle('hidden');
+            if (menu.classList.contains('hidden')) icon.classList.replace('fa-xmark', 'fa-bars');
+            else icon.classList.replace('fa-bars', 'fa-xmark');
+        }
+
+        // --- PROFIL & GANTI EMAIL LOGIC ---
+        function openProfile() {
+            if(!window.currentUserData) return;
+            document.getElementById('profile-name').textContent = window.currentUserData.name;
+            document.getElementById('profile-phone').textContent = window.currentUserData.phone || '-';
+            document.getElementById('profile-email').textContent = window.currentUserData.email;
+            document.getElementById('new-email-input').value = '';
+            
+            // Sembunyikan fitur ganti bagi Admin
+            const isMember = window.currentUserData.nama_produk !== "Administrator";
+            document.getElementById('btn-edit-name').style.display = isMember ? 'block' : 'none';
+            document.getElementById('btn-edit-phone').style.display = isMember ? 'block' : 'none';
+            document.getElementById('btn-change-password').style.display = isMember ? 'flex' : 'none';
+
+            document.getElementById('profile-modal').classList.remove('hidden');
+            document.getElementById('mobile-menu').classList.add('hidden');
+            document.getElementById('mobile-menu-icon').classList.replace('fa-xmark', 'fa-bars');
+        }
+        function closeProfile() { document.getElementById('profile-modal').classList.add('hidden'); }
+        
+        function editProfileName() {
+            Swal.fire({
+                title: 'Ganti Nama Lengkap',
+                input: 'text',
+                inputValue: window.currentUserData.name,
+                showCancelButton: true, confirmButtonText: 'Simpan', cancelButtonText: 'Batal',
+                background: '#1e293b', color: '#fff'
+            }).then(res => {
+                if(res.isConfirmed && res.value.trim() !== '') {
+                    showLoading('Menyimpan...');
+                    google.script.run.withSuccessHandler(response => {
+                        const parsed = JSON.parse(response);
+                        hideLoading();
+                        if(parsed.success) {
+                            window.currentUserData.name = parsed.data.name;
+                            setupRoleUI(window.currentUserData.nama_produk);
+                            openProfile();
+                            Toast.fire({icon: 'success', title: parsed.message});
+                        }
+                    }).updateProfile({id: window.currentUserData.id, name: res.value.trim()});
+                }
+            });
+        }
+
+        function editProfilePhone() {
+            Swal.fire({
+                title: 'Ganti Nomor Handphone',
+                input: 'text',
+                inputValue: window.currentUserData.phone || '',
+                showCancelButton: true, confirmButtonText: 'Simpan', cancelButtonText: 'Batal',
+                background: '#1e293b', color: '#fff'
+            }).then(res => {
+                if(res.isConfirmed && res.value.trim() !== '') {
+                    showLoading('Menyimpan...');
+                    google.script.run.withSuccessHandler(response => {
+                        const parsed = JSON.parse(response);
+                        hideLoading();
+                        if(parsed.success) {
+                            window.currentUserData.phone = parsed.data.phone;
+                            openProfile();
+                            Toast.fire({icon: 'success', title: parsed.message});
+                        }
+                    }).updateProfile({id: window.currentUserData.id, phone: res.value.trim()});
+                }
+            });
+        }
+
+        function changePassword() {
+            Swal.fire({
+                title: 'Ganti Kata Sandi',
+                html: '<input id="swal-pass1" type="password" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="Kata Sandi Lama">' +
+                      '<input id="swal-pass2" type="password" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="Kata Sandi Baru">',
+                focusConfirm: false, showCancelButton: true, confirmButtonText: 'Update', background: '#1e293b', color: '#fff',
+                preConfirm: () => { 
+                    const oldP = document.getElementById('swal-pass1').value;
+                    const newP = document.getElementById('swal-pass2').value;
+                    if(!oldP || !newP) { Swal.showValidationMessage('Mohon isi semua bidang.'); return false; }
+                    return { id: window.currentUserData.id, oldPassword: oldP, newPassword: newP };
+                }
+            }).then((res) => {
+                if (res.isConfirmed) {
+                    showLoading('Memperbarui...');
+                    google.script.run.withSuccessHandler((response) => {
+                        hideLoading();
+                        const parsed = JSON.parse(response);
+                        if(parsed.success) {
+                            Toast.fire({ icon: 'success', title: parsed.message });
+                        } else {
+                            Swal.fire({icon: 'error', title: 'Gagal', text: parsed.message, background: '#1e293b', color: '#fff'});
+                        }
+                    }).updatePassword(res.value);
+                }
+            });
+        }
+
+        function submitEmailRequest() {
+            const newEmail = document.getElementById('new-email-input').value.trim();
+            if(!newEmail) return Toast.fire({icon: 'warning', title: 'Silakan isi email baru.'});
+            
+            showLoading('Mengirim Pengajuan...');
+            google.script.run.withSuccessHandler(res => {
+                hideLoading(); closeProfile();
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Berhasil',
+                    text: JSON.parse(res).message,
+                    background: '#1e293b', color: '#fff'
+                });
+            }).requestEmailChange({
+                memberId: window.currentUserData.id,
+                name: window.currentUserData.name,
+                oldEmail: window.currentUserData.email,
+                newEmail: newEmail
+            });
+        }
+        
+        function forgotPassword(e) {
+            e.preventDefault();
+            Swal.fire({
+                title: 'Lupa Kata Sandi?',
+                text: 'Silakan masukkan email terdaftar Anda untuk memulihkan akses.',
+                input: 'email',
+                inputPlaceholder: 'contoh@email.com',
+                showCancelButton: true,
+                confirmButtonText: 'Kirim Permintaan',
+                cancelButtonText: 'Batal',
+                background: '#1e293b',
+                color: '#fff',
+                inputValidator: (value) => {
+                    if (!value) {
+                        return 'Email wajib diisi!';
+                    }
+                }
+            }).then((result) => {
+                if (result.isConfirmed && result.value) {
+                    showLoading('Memvalidasi Email...');
+                    google.script.run
+                        .withSuccessHandler((response) => {
+                            hideLoading();
+                            try {
+                                const res = JSON.parse(response);
+                                if (res.success) {
+                                    Swal.fire({icon: 'success', title: 'Berhasil!', text: res.message, background: '#1e293b', color: '#fff'});
+                                } else {
+                                    Swal.fire({icon: 'error', title: 'Tidak Ditemukan', text: res.message, background: '#1e293b', color: '#fff'});
+                                }
+                            } catch (e) {
+                                Swal.fire('Error', 'Gagal memproses respon server.', 'error');
+                            }
+                        })
+                        .withFailureHandler(() => {
+                            hideLoading();
+                            Swal.fire('Error', 'Gagal menghubungi server.', 'error');
+                        })
+                        .requestPasswordReset(result.value.trim());
+                }
+            });
+        }
+
+        // --- LOGIN & SESSION LOGIC ---
+        function handleLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            showLoading('VERIFIKASI KREDENSIAL...');
+
+            google.script.run.withSuccessHandler((response) => {
+                try {
+                    const res = JSON.parse(response);
+                    if(res.success) {
+                        window.currentUserData = res.data;
+                        sessionStorage.setItem('dnc_session_token', res.data.token);
+                        
+                        setupRoleUI(res.data.nama_produk);
+                        document.getElementById('login-view').classList.add('hidden');
+                        document.getElementById('dashboard-wrapper').classList.remove('hidden');
+                        document.getElementById('dashboard-wrapper').classList.add('flex');
+                        switchView('dashboard');
+                        setTimeout(() => { hideLoading(); Toast.fire({ icon: 'success', title: res.message }); }, 500);
+                    } else { 
+                        hideLoading(); Toast.fire({ icon: 'error', title: res.message }); 
+                    }
+                } catch(err) { hideLoading(); Toast.fire({ icon: 'error', title: "Terjadi kesalahan respon server." }); }
+            }).withFailureHandler(() => { hideLoading(); Toast.fire({ icon: 'error', title: "Koneksi ke Supabase gagal." }); })
+            .verifyLogin({email: email, password: password}); 
+        }
+
+        function getSessionToken() { return sessionStorage.getItem('dnc_session_token'); }
+
+        function forceLogout() {
+            sessionStorage.removeItem('dnc_session_token');
+            window.currentUserData = null;
+            document.getElementById('dashboard-wrapper').classList.remove('flex');
+            document.getElementById('dashboard-wrapper').classList.add('hidden');
+            document.getElementById('login-view').classList.remove('hidden');
+            document.getElementById('loginForm').reset();
+        }
+
+        function setupRoleUI(role) {
+            const data = window.currentUserData;
+            document.querySelectorAll('#ui-name').forEach(el => { el.textContent = data.name; el.classList.remove('skeleton'); });
+            
+            // Merender nama_produk agar tampil di layar UI
+            document.querySelectorAll('#ui-role').forEach(el => { el.textContent = data.nama_produk || 'Akses Basic'; el.classList.remove('skeleton'); });
+            
+            let heroName = document.getElementById('hero-name');
+            if(heroName) {
+                heroName.textContent = data.name;
+                heroName.classList.remove('skeleton');
+            }
+            
+            document.getElementById('ui-status-dot').classList.remove('hidden');
+            document.getElementById('mobile-ui-name').textContent = data.name;
+
+            // Logika Admin sekarang mendeteksi email Super Admin secara spesifik
+            const isAdmin = (data.email === "shakudaraedo@gmail.com" || data.nama_produk === "Administrator");
+            document.querySelectorAll('.admin-feature').forEach(el => {
+                if(isAdmin) el.classList.remove('hidden'); else el.classList.add('hidden');
+            });
+        }
+
+        // --- FETCH DATA LOGIC ---
+        function fetchData(view) {
+            if(view === 'dashboard') {
+                google.script.run.withSuccessHandler((resText) => {
+                    try {
+                        const res = JSON.parse(resText);
+                        if(res.success && res.data) {
+                            document.getElementById("stat-materi").textContent = res.data.materi_count !== undefined ? res.data.materi_count : 0;
+                            document.getElementById("stat-template").textContent = res.data.template_count !== undefined ? res.data.template_count : 0;
+                            document.getElementById("stat-pengumuman").textContent = res.data.pengumuman_count !== undefined ? res.data.pengumuman_count : 0;
+                            
+                            document.getElementById("stat-materi").classList.remove('skeleton');
+                            document.getElementById("stat-template").classList.remove('skeleton');
+                            document.getElementById("stat-pengumuman").classList.remove('skeleton');
+                        }
+                    } catch(e) {}
+                }).getStats(); 
+                
+                google.script.run.withSuccessHandler((resText) => {
+                    try {
+                        const res = JSON.parse(resText);
+                        if(res.success && Array.isArray(res.data)) {
+                            const container = document.getElementById('announcement-container');
+                            if(res.data.length === 0) {
+                                container.innerHTML = `<div class="p-6 text-center text-slate-500 text-sm">Belum ada pengumuman.</div>`; return;
+                            }
+                            container.innerHTML = res.data.map(item => `
+                                <div class="p-6 hover:bg-slate-800/40 transition-colors">
+                                    <div class="flex justify-between items-start mb-2">
+                                        <h4 class="font-bold text-white">${item.title}</h4>
+                                        <span class="text-xs font-semibold text-teal-400 bg-teal-900/30 px-2 py-1 rounded-full"><i class="fa-regular fa-clock mr-1"></i> ${item.date}</span>
+                                    </div>
+                                    <p class="text-slate-300 text-sm mt-2 leading-relaxed">${item.content}</p>
+                                </div>
+                            `).join('');
+                        }
+                    } catch(e) {}
+                }).getAnnouncements();
+            } 
+            else if (view === 'tools') {
+                google.script.run.withSuccessHandler((resText) => {
+                    try {
+                        const res = JSON.parse(resText);
+                        if(res.success && Array.isArray(res.data)) {
+                            document.getElementById('container-tools').innerHTML = res.data.map(item => `
+                                <div class="bg-slate-800 rounded-xl p-6 border border-slate-700 hover:border-blue-500 transition-colors group">
+                                    <div class="w-12 h-12 bg-blue-900/40 rounded-lg flex items-center justify-center text-blue-400 mb-4 group-hover:scale-110 transition-transform"><i class="fa-solid fa-wrench text-xl"></i></div>
+                                    <h3 class="text-lg font-bold text-white mb-2">${item.title}</h3>
+                                    <a href="${item.link}" target="_blank" class="inline-block mt-4 text-sm text-blue-400 hover:text-blue-300 font-medium">Buka Tool <i class="fa-solid fa-arrow-right ml-1"></i></a>
+                                </div>
+                            `).join('');
+                        }
+                    } catch(e) {}
+                }).getTools();
+            }
+            else if (view === 'media') {
+                google.script.run.withSuccessHandler((resText) => {
+                    try {
+                        const res = JSON.parse(resText);
+                        if(res.success && Array.isArray(res.data)) {
+                            const types = ['Video', 'PDF', 'Slide'];
+                            let htmlContent = '';
+                            
+                            types.forEach(type => {
+                                const filteredMedia = res.data.filter(m => m.type === type);
+                                if(filteredMedia.length > 0) {
+                                    let sectionTitle = type === 'Video' ? '🎥 Video Pembelajaran' : (type === 'PDF' ? '📄 Modul PDF' : '📊 Slide Presentasi');
+                                    
+                                    htmlContent += `
+                                        <div class="mb-4">
+                                            <h3 class="text-lg font-bold text-slate-300 mb-4 border-b border-slate-700 pb-2">${sectionTitle}</h3>
+                                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                                ${filteredMedia.map(item => `
+                                                    <div class="bg-slate-800 rounded-xl p-5 border border-slate-700 hover:border-indigo-500 transition-colors flex items-start space-x-4">
+                                                        <div class="w-14 h-14 bg-indigo-900/40 rounded-lg flex items-center justify-center text-indigo-400 shrink-0">
+                                                            <i class="fa-solid ${item.type === 'Video' ? 'fa-video' : (item.type === 'Slide' ? 'fa-person-chalkboard' : 'fa-file-pdf')} text-2xl"></i>
+                                                        </div>
+                                                        <div>
+                                                            <h3 class="font-bold text-white leading-tight mb-1">${item.title}</h3>
+                                                            <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded">${item.type}</span>
+                                                            <a href="${item.link}" target="_blank" class="block mt-3 text-sm text-indigo-400 hover:text-indigo-300 font-medium">Akses Media</a>
+                                                        </div>
+                                                    </div>
+                                                `).join('')}
+                                            </div>
+                                        </div>
+                                    `;
+                                }
+                            });
+                            document.getElementById('container-media').innerHTML = htmlContent || `<p class="text-slate-500 italic">Belum ada media pembelajaran.</p>`;
+                        }
+                    } catch(e) {}
+                }).getMedia();
+            }
+            else if (view === 'galeri') {
+                google.script.run.withSuccessHandler((resText) => {
+                    try {
+                        const res = JSON.parse(resText);
+                        if(res.success && Array.isArray(res.data)) {
+                            document.getElementById('container-galeri').innerHTML = res.data.map(item => `
+                                <div class="bg-slate-800 rounded-xl overflow-hidden border border-slate-700 hover:border-teal-500 transition-colors flex flex-col group">
+                                    <div class="h-40 bg-slate-900 relative overflow-hidden flex items-center justify-center">
+                                        ${item.image ? `<img src="${item.image}" alt="${item.title}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">` : `<i class="fa-solid fa-code text-5xl text-slate-700"></i>`}
+                                    </div>
+                                    <div class="p-6 flex-1 flex flex-col relative z-10 bg-slate-800">
+                                        <h3 class="text-xl font-bold text-white mb-2">${item.title}</h3>
+                                        <p class="text-slate-400 text-sm flex-1">${item.desc}</p>
+                                        <a href="${item.link}" target="_blank" class="mt-4 w-full bg-slate-700 hover:bg-slate-600 text-center text-white py-2 rounded-lg text-sm font-medium transition-colors">Lihat Detail App</a>
+                                    </div>
+                                </div>
+                            `).join('');
+                        }
+                    } catch(e) {}
+                }).getApps();
+            }
+            else if (view === 'admin') {
+                google.script.run.withSuccessHandler((resText) => {
+                    try {
+                        const res = JSON.parse(resText);
+                        if(res.success && Array.isArray(res.data)) {
+                            const container = document.getElementById('container-email-requests');
+                            if(res.data.length === 0) container.innerHTML = `<tr><td colspan="5" class="px-6 py-4 text-center text-sm text-slate-500">Tidak ada pengajuan ganti email baru.</td></tr>`;
+                            else {
+                                container.innerHTML = res.data.map(req => `
+                                    <tr class="hover:bg-slate-800/50">
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-400">${req.date}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">${req.name}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-400 line-through">${req.old_email}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-400 font-bold">${req.new_email}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
+                                            <button onclick="adminApproveEmail(${req.id})" class="text-green-400 hover:text-green-300 font-medium mr-3"><i class="fa-solid fa-check"></i> Terima</button>
+                                            <button onclick="adminRejectEmail(${req.id})" class="text-red-400 hover:text-red-300 font-medium"><i class="fa-solid fa-xmark"></i> Tolak</button>
+                                        </td>
+                                    </tr>
+                                `).join('');
+                            }
+                        }
+                    } catch(e) {}
+                }).getEmailRequests();
+
+                google.script.run.withSuccessHandler((resText) => {
+                    try {
+                        const res = JSON.parse(resText);
+                        if(res.success && Array.isArray(res.data)) {
+                            const container = document.getElementById('container-admin-announcements');
+                            if(res.data.length === 0) container.innerHTML = `<tr><td colspan="3" class="px-6 py-4 text-center text-sm text-slate-500">Belum ada pengumuman yang diposting.</td></tr>`;
+                            else {
+                                container.innerHTML = res.data.map(ann => `
+                                    <tr class="hover:bg-slate-800/50">
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-400">${ann.date}</td>
+                                        <td class="px-6 py-4 text-sm font-medium text-white truncate max-w-md">${ann.title}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
+                                            <button onclick="adminRemoveAnnouncement(${ann.id})" class="text-red-400 hover:text-red-300 font-medium"><i class="fa-solid fa-trash"></i> Hapus</button>
+                                        </td>
+                                    </tr>
+                                `).join('');
+                            }
+                        }
+                    } catch(e) {}
+                }).getAnnouncements();
+
+                google.script.run.withSuccessHandler((resText) => {
+                    try {
+                        const res = JSON.parse(resText);
+                        if(res.success && Array.isArray(res.data)) {
+                            document.getElementById('container-members').innerHTML = res.data.map((member, index) => `
+                                <tr class="hover:bg-slate-800/50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-400">${index + 1}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">${member.name}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300">${member.phone || '-'}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300">${member.email}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300 font-mono">${member.password}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
+                                        <button onclick="adminEditMember(${member.id}, '${member.name}', '${member.phone || ''}', '${member.email}')" class="text-blue-400 hover:text-blue-300 font-medium mr-3"><i class="fa-solid fa-pen-to-square"></i> Edit</button>
+                                        <button onclick="adminRemoveMember(${member.id})" class="text-red-400 hover:text-red-300 font-medium"><i class="fa-solid fa-trash"></i> Cabut</button>
+                                    </td>
+                                </tr>
+                            `).join('');
+                        }
+                    } catch(e) {}
+                }).getMembers();
+
+                google.script.run.withSuccessHandler((resText) => {
+                    try {
+                        const res = JSON.parse(resText);
+                        if(res.success && Array.isArray(res.data)) {
+                            document.getElementById('container-integrations').innerHTML = res.data.map(int => `
+                                <tr class="hover:bg-slate-800/50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300 font-mono text-xs truncate max-w-[200px]" title="${int.spreadsheet_id}">${int.spreadsheet_id}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-white"><span class="bg-slate-700 px-2 py-1 rounded text-xs border border-slate-600">${int.keyword}</span></td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
+                                        <button onclick="adminSyncIntegration(${int.id})" class="text-green-400 hover:text-green-300 font-medium mr-3"><i class="fa-solid fa-rotate"></i> Sync</button>
+                                        <button onclick="adminRemoveIntegration(${int.id})" class="text-red-400 hover:text-red-300 font-medium"><i class="fa-solid fa-trash"></i> Hapus</button>
+                                    </td>
+                                </tr>
+                            `).join('');
+                        }
+                    } catch(e) {}
+                }).getIntegrations();
+            }
+        }
+
+        // --- ADMIN ACTION LOGIC ---
+        function adminApproveEmail(id) {
+             showLoading('Memproses...');
+             google.script.run.withSuccessHandler((resText) => {
+                 hideLoading(); const res = JSON.parse(resText);
+                 Toast.fire({ icon: 'success', title: res.message }); fetchData('admin');
+             }).approveEmailRequest(id);
+        }
+        function adminRejectEmail(id) {
+             showLoading('Memproses...');
+             google.script.run.withSuccessHandler((resText) => {
+                 hideLoading(); const res = JSON.parse(resText);
+                 Toast.fire({ icon: 'success', title: res.message }); fetchData('admin');
+             }).rejectEmailRequest(id);
+        }
+
+        function adminAddAnnouncement() {
+            Swal.fire({
+                title: 'Buat Pengumuman',
+                html: '<input id="swal-ann1" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="Judul Pengumuman...">' +
+                      '<textarea id="swal-ann2" class="swal2-textarea bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="Isi detail pengumuman di sini..." rows="4"></textarea>',
+                focusConfirm: false, showCancelButton: true, confirmButtonText: 'Posting', background: '#1e293b', color: '#fff',
+                preConfirm: () => { return { title: document.getElementById('swal-ann1').value, content: document.getElementById('swal-ann2').value } }
+            }).then((res) => {
+                if (res.isConfirmed && res.value.title) {
+                    showLoading('Memposting...');
+                    google.script.run.withSuccessHandler((resText) => {
+                        hideLoading(); const response = JSON.parse(resText);
+                        Toast.fire({ icon: 'success', title: response.message }); fetchData('admin');
+                    }).addAnnouncement(res.value);
+                }
+            });
+        }
+        function adminRemoveAnnouncement(id) {
+            Swal.fire({
+                title: 'Hapus Pengumuman?', text: "Tindakan ini tidak dapat dibatalkan.",
+                icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', confirmButtonText: 'Ya, Hapus', background: '#1e293b', color: '#fff'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    showLoading('Menghapus...');
+                    google.script.run.withSuccessHandler((resText) => {
+                        hideLoading(); const res = JSON.parse(resText);
+                        Toast.fire({ icon: 'success', title: res.message }); fetchData('admin');
+                    }).removeAnnouncement(id);
+                }
+            });
+        }
+
+        function adminAddMember() {
+            Swal.fire({
+                title: 'Tambah Member Baru',
+                html: '<input id="swal-input1" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="Nama Lengkap">' +
+                      '<input id="swal-input2" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="Nomor Telepon / WA">' +
+                      '<input id="swal-input3" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="Alamat Email">',
+                focusConfirm: false, showCancelButton: true, confirmButtonText: 'Simpan', background: '#1e293b', color: '#fff',
+                preConfirm: () => { return { name: document.getElementById('swal-input1').value, phone: document.getElementById('swal-input2').value, email: document.getElementById('swal-input3').value } }
+            }).then((result) => {
+                if (result.isConfirmed && result.value.email) {
+                    showLoading('Menyimpan Data...');
+                    google.script.run.withSuccessHandler((resText) => {
+                        hideLoading(); const res = JSON.parse(resText);
+                        Toast.fire({ icon: 'success', title: res.message }); fetchData('admin');
+                    }).addMember(result.value);
+                }
+            });
+        }
+
+        function adminEditMember(id, name, phone, email) {
+            Swal.fire({
+                title: 'Edit Data Member',
+                html: `<input id="swal-input1" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" value="${name}" placeholder="Nama Lengkap">` +
+                      `<input id="swal-input2" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" value="${phone}" placeholder="Nomor Telepon / WA">` +
+                      `<input id="swal-input3" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" value="${email}" placeholder="Alamat Email">`,
+                focusConfirm: false, showCancelButton: true, confirmButtonText: 'Update', background: '#1e293b', color: '#fff',
+                preConfirm: () => { return { id: id, name: document.getElementById('swal-input1').value, phone: document.getElementById('swal-input2').value, email: document.getElementById('swal-input3').value } }
+            }).then((result) => {
+                if (result.isConfirmed && result.value.email) {
+                    showLoading('Memperbarui Data...');
+                    google.script.run.withSuccessHandler((resText) => {
+                        hideLoading(); const res = JSON.parse(resText);
+                        Toast.fire({ icon: 'success', title: res.message }); fetchData('admin');
+                    }).editMember(result.value);
+                }
+            });
+        }
+        
+        function adminRemoveMember(id) {
+            Swal.fire({
+                title: 'Cabut Akses?', text: "Member ini tidak akan bisa masuk lagi.",
+                icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', confirmButtonText: 'Ya, Cabut', background: '#1e293b', color: '#fff'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    showLoading('Memproses...');
+                    google.script.run.withSuccessHandler((resText) => {
+                        hideLoading(); const res = JSON.parse(resText);
+                        Toast.fire({ icon: 'success', title: res.message }); fetchData('admin');
+                    }).removeMember(id);
+                }
+            });
+        }
+
+        function adminAddIntegration() {
+            Swal.fire({
+                title: 'Integrasi Auto-Register',
+                html: '<input id="swal-int1" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="ID Spreadsheet (ex: 1BxiMVs...)">' +
+                      '<input id="swal-int2" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="Filter Keyword (ex: LUNAS)">',
+                focusConfirm: false, showCancelButton: true, confirmButtonText: 'Simpan', background: '#1e293b', color: '#fff',
+                preConfirm: () => { return { spreadsheetId: document.getElementById('swal-int1').value, keyword: document.getElementById('swal-int2').value } }
+            }).then((res) => {
+                if (res.isConfirmed && res.value.spreadsheetId) {
+                    showLoading('Menyimpan Integrasi...');
+                    google.script.run.withSuccessHandler((resText) => {
+                        hideLoading(); const response = JSON.parse(resText);
+                        Toast.fire({ icon: 'success', title: response.message }); fetchData('admin');
+                    }).addIntegration(res.value);
+                }
+            });
+        }
+
+        function adminRemoveIntegration(id) {
+            Swal.fire({
+                title: 'Hapus Integrasi?', text: "Sinkronisasi otomatis dari sheet ini akan dihentikan.",
+                icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', confirmButtonText: 'Ya, Hapus', background: '#1e293b', color: '#fff'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    showLoading('Menghapus...');
+                    google.script.run.withSuccessHandler((resText) => {
+                        hideLoading(); const res = JSON.parse(resText);
+                        Toast.fire({ icon: 'success', title: res.message }); fetchData('admin');
+                    }).removeIntegration(id);
+                }
+            });
+        }
+
+        function adminSyncIntegration(id) {
+            showLoading('Menyinkronkan Data...');
+            google.script.run.withSuccessHandler((resText) => {
+                hideLoading(); const response = JSON.parse(resText);
+                Toast.fire({ icon: 'success', title: response.message }); fetchData('admin');
+            }).syncIntegration(id);
+        }
+
+        function adminAddTool() {
+            Swal.fire({
+                title: 'Tautkan Tool Baru',
+                html: '<input id="swal-input1" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="Nama Tool">' +
+                      '<input id="swal-input2" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="Link URL">',
+                focusConfirm: false, showCancelButton: true, confirmButtonText: 'Simpan', background: '#1e293b', color: '#fff',
+                preConfirm: () => { return { title: document.getElementById('swal-input1').value, link: document.getElementById('swal-input2').value } }
+            }).then((res) => {
+                if (res.isConfirmed && res.value.title) {
+                    showLoading('Menyimpan...');
+                    google.script.run.withSuccessHandler((resText) => {
+                        hideLoading(); const response = JSON.parse(resText);
+                        Toast.fire({ icon: 'success', title: response.message }); fetchData('tools');
+                    }).addTool(res.value);
+                }
+            });
+        }
+
+        function adminAddMedia() {
+            Swal.fire({
+                title: 'Upload Media',
+                html: '<input id="swal-input1" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="Judul Media">' +
+                      '<select id="swal-input2" class="swal2-select bg-slate-800 text-white border-slate-600 w-4/5 text-sm"><option value="Video">Video</option><option value="PDF">Modul PDF</option><option value="Slide">Slide Presentasi</option></select>' +
+                      '<input id="swal-input3" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="Link Tautan">',
+                focusConfirm: false, showCancelButton: true, confirmButtonText: 'Simpan', background: '#1e293b', color: '#fff',
+                preConfirm: () => { return { title: document.getElementById('swal-input1').value, type: document.getElementById('swal-input2').value, link: document.getElementById('swal-input3').value } }
+            }).then((res) => {
+                if (res.isConfirmed && res.value.title) {
+                    showLoading('Menyimpan...');
+                    google.script.run.withSuccessHandler((resText) => {
+                        hideLoading(); const response = JSON.parse(resText);
+                        Toast.fire({ icon: 'success', title: response.message }); fetchData('media');
+                    }).addMedia(res.value);
+                }
+            });
+        }
+
+        function adminAddApp() {
+            Swal.fire({
+                title: 'Upload Template App',
+                html: '<input id="swal-input1" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="Nama Aplikasi">' +
+                      '<input id="swal-input2" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="Deskripsi Singkat">' +
+                      '<input id="swal-inputimage" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="Link URL Gambar / Thumbnail">' +
+                      '<input id="swal-input3" class="swal2-input bg-slate-800 text-white border-slate-600 w-4/5 text-sm" placeholder="Link / Demo Aplikasi">',
+                focusConfirm: false, showCancelButton: true, confirmButtonText: 'Simpan', background: '#1e293b', color: '#fff',
+                preConfirm: () => { return { title: document.getElementById('swal-input1').value, desc: document.getElementById('swal-input2').value, image: document.getElementById('swal-inputimage').value, link: document.getElementById('swal-input3').value } }
+            }).then((res) => {
+                if (res.isConfirmed && res.value.title) {
+                    showLoading('Menyimpan...');
+                    google.script.run.withSuccessHandler((resText) => {
+                        hideLoading(); const response = JSON.parse(resText);
+                        Toast.fire({ icon: 'success', title: response.message }); fetchData('galeri');
+                    }).addApp(res.value);
+                }
+            });
+        }
+
+        // --- ACTIONS ---
+        function confirmLogout() {
+            Swal.fire({
+                title: 'Akhiri Sesi?', text: "Anda akan keluar dari Portal GAS DNC.",
+                icon: 'warning', showCancelButton: true, confirmButtonColor: '#3b82f6', cancelButtonColor: '#475569',
+                confirmButtonText: 'Ya, Keluar', cancelButtonText: 'Batal', background: '#1e293b', color: '#fff', reverseButtons: true
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    showLoading('MENGAKHIRI SESI...');
+                    setTimeout(() => {
+                        forceLogout();
+                        hideLoading();
+                        Toast.fire({ icon: 'success', title: "Berhasil keluar sistem." });
+                    }, 1000);
+                }
+            });
+        }
+    </script>
 </body>
 </html>
