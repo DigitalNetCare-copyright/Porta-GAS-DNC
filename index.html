@@ -901,8 +901,9 @@
             document.getElementById('ui-status-dot').classList.remove('hidden');
             document.getElementById('mobile-ui-name').textContent = data.name;
 
-            // Logika Admin sekarang mendeteksi email Super Admin secara spesifik
-            const isAdmin = (data.email === "shakudaraedo@gmail.com" || data.nama_produk === "Administrator");
+            // 🛠️ PERBAIKAN FINAL: Deteksi Admin HANYA untuk email Super Admin atau role Administrator
+            const isAdmin = (data.email === "digitalnetcarecopyright@gmail.com" || data.nama_produk === "Administrator");
+            
             document.querySelectorAll('.admin-feature').forEach(el => {
                 if(isAdmin) el.classList.remove('hidden'); else el.classList.add('hidden');
             });
