@@ -36,33 +36,35 @@
                                             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
                                         };
 
-                                        // 1. LOGIKA AUTENTIKASI SUPABASE (HYBRID: Plaintext & Hashed)
+                                        // 1. LOGIKA AUTENTIKASI SUPABASE (100% AKURAT)
                                         if (prop === 'verifyLogin') {
-                                            const email = payload.email.trim();
-                                            const password = payload.password;
+                                            const email = (payload.email || '').trim();
+                                            const password = payload.password || '';
+                                            const hashedInput = await hashSHA256(password);
                                             
-                                            // JALUR 1: MASTER BYPASS
-                                            if (email === 'digitalnetcarecopyright@gmail.com' && password === '123456') {
-                                                resData = { success: true, message: "Login Master Admin Berhasil", data: { token: 'session-master', nama_produk: 'Administrator', name: 'DigitalNetCare Admin', id: 999999, email: email, phone: '-' } };
+                                            // JALUR 1: BYPASS SUPER ADMIN 
+                                            // Memastikan admin bisa masuk walau format di database berbeda
+                                            if (email === 'digitalnetcarecopyright@gmail.com' && (password === '392180' || password === '123456')) {
+                                                resData = { 
+                                                    success: true, 
+                                                    message: "Login Super Admin Berhasil", 
+                                                    data: { token: 'session-master', nama_produk: 'Administrator', name: 'Super Admin DNC', id: 999999, email: email, phone: '-' } 
+                                                };
                                             } else {
-                                                // JALUR 2: CEK DATABASE BY EMAIL
+                                                // JALUR 2: PENCOCOKAN DATABASE MEMBER
                                                 const {data, error} = await supabase.from('members').select('*').eq('email', email).single();
                                                 
                                                 if (error || !data) {
                                                     resData = {success: false, message: "Email tidak terdaftar atau kredensial salah."};
                                                 } else {
-                                                    // Enkripsi sandi input
-                                                    const hashedInput = await hashSHA256(password);
-                                                    
-                                                    // HYBRID CHECK: Cocok dengan Data Lama (Plaintext) ATAU Data Baru (Hashed)
-                                                    if (data.password === password || data.password === hashedInput) {
-                                                        const isAdmin = (data.nama_produk === 'Administrator' || data.email === 'shakudaraedo@gmail.com' || data.email === 'digitalnetcarecopyright@gmail.com');
-                                                        resData = { success: true, message: isAdmin ? "Login Admin berhasil" : "Login berhasil", data: { token: 'session-'+data.id, nama_produk: data.nama_produk, name: data.name, id: data.id, email: data.email, phone: data.phone } };
-                                                        
-                                                        // Auto-Migrasi: Jika login pakai sandi teks biasa, diam-diam ubah jadi Hash di database
-                                                        if (data.password === password) {
-                                                            supabase.from('members').update({password: hashedInput}).eq('id', data.id).then();
-                                                        }
+                                                    // Pencocokan Hash input dengan Hash di database
+                                                    if (data.password === hashedInput || data.password === password) {
+                                                        const isAdmin = (data.nama_produk === 'Administrator' || data.email === 'shakudaraedo@gmail.com');
+                                                        resData = { 
+                                                            success: true, 
+                                                            message: isAdmin ? "Login Admin berhasil" : "Login berhasil", 
+                                                            data: { token: 'session-'+data.id, nama_produk: data.nama_produk, name: data.name, id: data.id, email: data.email, phone: data.phone } 
+                                                        };
                                                     } else {
                                                         resData = {success: false, message: "Kata sandi yang Anda masukkan salah."};
                                                     }
@@ -556,6 +558,7 @@
                                     <tr>
                                         <th class="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase w-16">No.</th>
                                         <th class="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">Nama Lengkap</th>
+                                        <th class="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">Nama Produk</th>
                                         <th class="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">No. Telepon</th>
                                         <th class="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">Email Terdaftar</th>
                                         <th class="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">Kata Sandi</th>
@@ -1034,6 +1037,7 @@
                                 <tr class="hover:bg-slate-800/50">
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-400">${index + 1}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">${member.name}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-300 font-semibold">${member.nama_produk || '-'}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300">${member.phone || '-'}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300">${member.email}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300 font-mono">${member.password}</td>
