@@ -71,10 +71,35 @@
                                                 }
                                             }
                                         }
+                                        // LOGIKA LUPA SANDI (HYBRID SUPABASE + GAS EMAIL SENDER)
                                         else if (prop === 'requestPasswordReset') {
-                                            const {data} = await supabase.from('members').select('id').eq('email', args[0]).single();
-                                            if (data) resData = {success: true, message: "Instruksi pemulihan sandi dikirim. (Hubungi Admin)"};
-                                            else resData = {success: false, message: "Email tersebut tidak terdaftar."};
+                                            const emailInput = args[0];
+                                            const {data} = await supabase.from('members').select('id, name').eq('email', emailInput).single();
+                                            
+                                            if (data) {
+                                                // 1. Generate Sandi Acak Sementara (8 Karakter)
+                                                const tempPass = Math.random().toString(36).slice(-8);
+                                                const hashedTemp = await hashSHA256(tempPass);
+                                                
+                                                // 2. Timpa sandi lama di Supabase dengan sandi acak yang dienkripsi
+                                                await supabase.from('members').update({password: hashedTemp}).eq('id', data.id);
+                                                
+                                                // 3. Trigger GAS Microservice untuk Mengirim Email via Gmail
+                                                // ⚠️ PENTING: Ganti URL di bawah dengan Web App URL dari Tahap 1
+                                                const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyLkounQrNe-HLU-dSIiLC1Ngp0fqwfRsfi3PkhuwgJ-NACouy0ITumJERTaKlaTobd3g/exec';
+                                                
+                                                const formData = new URLSearchParams();
+                                                formData.append('email', emailInput);
+                                                formData.append('password', tempPass);
+                                                formData.append('name', data.name);
+
+                                                // Kirim perintah ke GAS tanpa memblokir sistem UI (Background task)
+                                                fetch(GAS_WEB_APP_URL, { method: 'POST', body: formData }).catch(err => console.error("Gagal memanggil GAS:", err));
+
+                                                resData = {success: true, message: "Kata sandi sementara telah dikirim ke email Anda!"};
+                                            } else {
+                                                resData = {success: false, message: "Email tersebut tidak terdaftar."};
+                                            }
                                         }
 
                                         // 2. DASHBOARD STATS & GET DATA
